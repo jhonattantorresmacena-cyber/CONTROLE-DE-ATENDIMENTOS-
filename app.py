@@ -12,14 +12,18 @@ st.markdown("---")
 # Carregamento dos dados
 @st.cache_data
 def load_data():
-    # Substitua pelo caminho do seu arquivo
-    df = pd.read_excel("data/procedimentos.xlsx") 
-    # Transformar de formato "largo" para "longo" (tidy data) para facilitar os gráficos
+    # Substitua pelo link que você copiou na "Publicação na Web"
+    GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpHTm4l6jKCsZTLaSJjDZn-TYdaoxla54U9hhkJLdBe_HC5QNrWleCaLkq7_UglTMXP-muYt4hNKAI/pub?output=csv"
+    
+    # Lê o CSV diretamente da URL
+    df = pd.read_csv(GOOGLE_SHEET_URL)
+    
+    # Derrete a tabela (melt) para o formato longo
+    # Certifique-se de que os nomes das colunas batem exatamente com a sua planilha
     df_melted = df.melt(id_vars=["CURSO", "UNIDADE"], 
                         var_name="MES", 
                         value_name="ATENDIMENTOS")
     return df_melted
-
 df = load_data()
 
 # --- SIDEBAR (Filtros) ---
