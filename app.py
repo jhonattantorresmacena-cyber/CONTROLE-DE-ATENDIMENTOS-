@@ -17,7 +17,7 @@ st.markdown("""
 @st.cache_data
 def load_data():
     # URL da planilha publicada como CSV
-    URL = "https://docs.google.com/spreadsheets/d/1fR58iY_llCMQjrx2K7U3A2bFsUiHPhrtxc0fsT2vIuY/edit?gid=0#gid=0"
+    URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpHTm4l6jKCsZTLaSJjDZn-TYdaoxla54U9hhkJLdBe_HC5QNrWleCaLkq7_UglTMXP-muYt4hNKAI/pub?output=csv"
     
     df = pd.read_csv(URL)
     
