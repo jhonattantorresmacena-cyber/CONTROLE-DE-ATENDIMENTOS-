@@ -1,106 +1,114 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import time
 
 # 1. CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(page_title="Dashboard FASICLIN", layout="wide")
 
-# Estilo para melhorar a interface
+# Estilo CSS para melhorar o visual
 st.markdown("""
     <style>
-    [data-testid="stMetricValue"] { font-size: 28px; color: #2E86C1; }
+    [data-testid="stMetricValue"] { font-size: 28px; color: #1ABC9C; }
     .main { background-color: #f8f9fa; }
     </style>
     """, unsafe_allow_html=True)
 
-# 2. CARREGAMENTO DOS DADOS
-# Altere o decorador do cache para atualizar a cada 600 segundos (10 minutos)
-@st.cache_data(ttl=600) 
+# 2. FUNÇÃO DE CARREGAMENTO (Com atualização automática a cada 10 min)
+@st.cache_data(ttl=600)
 def load_data():
+    # URL da planilha publicada como CSV
     URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpHTm4l6jKCsZTLaSJjDZn-TYdaoxla54U9hhkJLdBe_HC5QNrWleCaLkq7_UglTMXP-muYt4hNKAI/pub?output=csv"
     
-    # Adicionando um parâmetro aleatório na URL para evitar cache do próprio Google
-    import time
-    df = pd.read_csv(f"{URL}&cache_bust={time.time()}")
+    # Adiciona um marcador de tempo na URL para forçar o Google a entregar dados novos
+    df = pd.read_csv(f"{URL}&refresh={time.time()}")
     
+    # Padroniza nomes de colunas (Maiúsculo e sem espaços)
     df.columns = [str(col).strip().upper() for col in df.columns]
     
-    # Garantindo que a soma seja apenas da coluna correta
-    col_valor = "QUANTIDADE_PROCEDIMENTO"
-    df[col_valor] = pd.to_numeric(df[col_valor], errors='coerce').fillna(0)
+    # Define a coluna correta de valor (Verificando se há espaço no nome vindo da planilha)
+    # Na sua imagem a coluna parece ser "QUANTIDADE _PROCEDIMENTO"
+    target_col = "QUANTIDADE_PROCEDIMENTO"
+    for col in df.columns:
+        if "QUANTIDADE" in col:
+            target_col = col
+            break
+            
+    # Converte para número e limpa a coluna
+    df[target_col] = pd.to_numeric(df[target_col], errors='coerce').fillna(0)
     
-    return df, col_valor
+    return df, target_col
 
 try:
     df, col_valor = load_data()
 
-    # --- 3. SIDEBAR (FILTROS) ---
-    st.sidebar.header("Filtros de Análise")
+    # --- 3. SIDEBAR (FILTROS E ATUALIZAÇÃO) ---
+    st.sidebar.header("⚙️ Painel de Controle")
     
-    # Filtro de Unidade
-    u_list = df["UNIDADE"].unique()
-    u_sel = st.sidebar.multiselect("Selecione a Unidade:", u_list, default=u_list)
+    if st.sidebar.button("🔄 Forçar Atualização"):
+        st.cache_data.clear()
+        st.rerun()
 
-    # Filtro de Curso
-    c_list = df["CURSO"].unique()
-    c_sel = st.sidebar.multiselect("Selecione o Curso:", c_list, default=c_list)
+    st.sidebar.markdown("---")
     
-    # Filtro de Mês
-    m_list = df["MÊS"].unique()
-    m_sel = st.sidebar.multiselect("Selecione o Mês:", m_list, default=m_list)
+    # Filtros Dinâmicos
+    unidades = df["UNIDADE"].unique()
+    u_sel = st.sidebar.multiselect("Unidade:", unidades, default=unidades)
 
-    # Aplicação dos filtros (Ignorando anos e semestres na soma)
+    cursos = df["CURSO"].unique()
+    c_sel = st.sidebar.multiselect("Curso:", cursos, default=cursos)
+    
+    meses = df["MÊS"].unique()
+    m_sel = st.sidebar.multiselect("Mês:", meses, default=meses)
+
+    # Aplicação dos filtros
     mask = (df["UNIDADE"].isin(u_sel)) & (df["CURSO"].isin(c_sel)) & (df["MÊS"].isin(m_sel))
     df_filtered = df[mask]
 
-    # --- 4. TÍTULO ---
+    # --- 4. CABEÇALHO ---
     st.title("📊 Gestão de Procedimentos - FASICLIN")
-    st.markdown("---")
+    st.info(f"Dados atualizados em: {time.strftime('%H:%M:%S')}")
 
-    # --- 5. INDICADORES PRINCIPAIS (KPIs) ---
-    kpi1, kpi2, kpi3 = st.columns(3)
-
-    # Total Geral (Somente da coluna de procedimentos)
-    total_atendimentos = int(df_filtered[col_valor].sum())
+    # --- 5. INDICADORES (KPIs) ---
+    k1, k2, k3 = st.columns(3)
     
-    # Média Mensal
-    qtd_meses = len(df_filtered["MÊS"].unique())
-    media = total_atendimentos / qtd_meses if qtd_meses > 0 else 0
+    # Cálculo correto: Soma apenas a coluna de quantidade (ignora ano e semestre)
+    total_atend = int(df_filtered[col_valor].sum())
+    media_mensal = total_atend / len(df_filtered["MÊS"].unique()) if not df_filtered.empty else 0
     
-    # Curso Líder
-    if not df_filtered.empty:
-        curso_lider = df_filtered.groupby("CURSO")[col_valor].sum().idxmax()
-    else:
-        curso_lider = "N/A"
-
-    with kpi1:
-        st.metric("Total de Procedimentos", f"{total_atendimentos:,}".replace(",", "."))
-    with kpi2:
-        st.metric("Média Mensal", f"{int(media):,}".replace(",", "."))
-    with kpi3:
-        st.metric("Curso Líder", curso_lider)
+    with k1:
+        st.metric("Total de Procedimentos", f"{total_atend:,}".replace(",", "."))
+    with k2:
+        st.metric("Média Mensal", f"{int(media_mensal):,}".replace(",", "."))
+    with k3:
+        if not df_filtered.empty:
+            lider = df_filtered.groupby("CURSO")[col_valor].sum().idxmax()
+            st.metric("Curso Líder", lider)
+        else:
+            st.metric("Curso Líder", "N/A")
 
     st.markdown("---")
 
-    # --- 6. VISÕES GRÁFICAS ---
-    col_esq, col_dir = st.columns(2)
+    # --- 6. GRÁFICOS ---
+    c1, c2 = st.columns(2)
 
-    with col_esq:
-        st.subheader("📈 Evolução Temporal")
-        # Agrupamento explícito pela coluna de valor correta
-        df_evolucao = df_filtered.groupby("MÊS", sort=False)[col_valor].sum().reset_index()
-        fig_line = px.line(df_evolucao, x="MÊS", y=col_valor, markers=True, color_discrete_sequence=["#2E86C1"])
+    with c1:
+        st.subheader("📈 Evolução por Mês")
+        # Agrupamento correto para não somar colunas de ano
+        df_evol = df_filtered.groupby("MÊS", sort=False)[col_valor].sum().reset_index()
+        fig_line = px.line(df_evol, x="MÊS", y=col_valor, markers=True, color_discrete_sequence=["#2E86C1"])
         st.plotly_chart(fig_line, use_container_width=True)
 
-    with col_dir:
-        st.subheader("🍩 Participação por Curso")
+    with c2:
+        st.subheader("🍩 Distribuição por Curso")
         fig_pie = px.pie(df_filtered, values=col_valor, names="CURSO", hole=0.4, 
-                         color_discrete_sequence=px.colors.qualitative.Pastel)
+                         color_discrete_sequence=px.colors.qualitative.Safe)
         st.plotly_chart(fig_pie, use_container_width=True)
 
-    # Tabela detalhada
-    with st.expander("📄 Visualizar Tabela de Dados Detalhada"):
-        st.dataframe(df_filtered, use_container_width=True)
+    # --- 7. TABELA DETALHADA ---
+    with st.expander("📄 Ver dados completos"):
+        st.write(df_filtered)
 
 except Exception as e:
     st.error(f"Erro ao carregar dashboard: {e}")
+    st.warning("Dica: Verifique se a coluna na planilha se chama exatamente 'QUANTIDADE_PROCEDIMENTO'.")
