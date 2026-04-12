@@ -14,27 +14,19 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # 2. CARREGAMENTO DOS DADOS
-@st.cache_data
+# Altere o decorador do cache para atualizar a cada 600 segundos (10 minutos)
+@st.cache_data(ttl=600) 
 def load_data():
-    # URL da planilha publicada como CSV
     URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpHTm4l6jKCsZTLaSJjDZn-TYdaoxla54U9hhkJLdBe_HC5QNrWleCaLkq7_UglTMXP-muYt4hNKAI/pub?output=csv"
     
-    df = pd.read_csv(URL)
+    # Adicionando um parâmetro aleatório na URL para evitar cache do próprio Google
+    import time
+    df = pd.read_csv(f"{URL}&cache_bust={time.time()}")
     
-    # Limpeza de nomes de colunas: remove espaços extras e garante o nome correto
     df.columns = [str(col).strip().upper() for col in df.columns]
     
-    # IMPORTANTE: Garantir que a coluna de quantidade seja tratada como número
-    # O nome deve ser exatamente como está na planilha (vimos que tem um espaço antes do underline na sua imagem)
-    col_valor = "QUANTIDADE_PROCEDIMENTO" 
-    
-    if col_valor not in df.columns:
-        # Tenta localizar a coluna caso haja variações de espaço ou escrita
-        for c in df.columns:
-            if "QUANTIDADE" in c:
-                col_valor = c
-                break
-
+    # Garantindo que a soma seja apenas da coluna correta
+    col_valor = "QUANTIDADE_PROCEDIMENTO"
     df[col_valor] = pd.to_numeric(df[col_valor], errors='coerce').fillna(0)
     
     return df, col_valor
