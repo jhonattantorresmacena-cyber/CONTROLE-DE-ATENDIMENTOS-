@@ -72,7 +72,7 @@ df, col_valor = load_data()
 col_logo, col_sync = st.columns([8, 2])
 with col_logo:
     # 4- CORREÇÃO DA LOGO: Usando o link direto da imagem pública da FASICLIN
-    st.image("https://www.fasiclin.com.br/wp-content/uploads/2021/08/logo-fasiclin.png", width=220)
+    st.image("https://github.com/jhonattantorresmacena-cyber/dashboard-fasiclin/blob/main/assets/image_1.png", width=220)
 with col_sync:
     st.markdown(f"""
         <div style='text-align: right; color: #7F8C8D; font-size: 0.85rem;'>
