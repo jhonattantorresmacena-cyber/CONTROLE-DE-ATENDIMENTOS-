@@ -61,7 +61,7 @@ df, col_valor = load_data()
 col_logo, col_sync = st.columns([8, 2])
 with col_logo:
     # Correção da Logo: Link direto oficial
-    st.image("https://www.fasiclin.com.br/wp-content/uploads/2021/08/logo-fasiclin.png", width=220)
+   st.image("image_1.png", width=220)
 with col_sync:
     st.markdown(f"<div style='text-align: right; color: #7F8C8D;'><b>{time.strftime('%d/%m/%Y %H:%M')}</b></div>", unsafe_allow_html=True)
 
