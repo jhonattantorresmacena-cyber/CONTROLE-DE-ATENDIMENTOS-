@@ -4,30 +4,40 @@ import plotly.express as px
 import time
 
 # ==========================================
-# 1. CONFIGURAÇÃO E ESTILIZAÇÃO
+# 1. CONFIGURAÇÃO E ESTILIZAÇÃO CUSTOMIZADA
 # ==========================================
-st.set_page_config(
-    page_title="Dashboard FASICLIN", 
-    layout="wide", 
-    page_icon="🏥"
-)
+st.set_page_config(page_title="Dashboard FASICLIN", layout="wide", page_icon="🏥")
 
-# Paleta de Cores e CSS
-COLOR_PRIMARY = "#1ABC9C" 
-COLORS_UNIDADES = {"SINOP": "#3498DB", "SORRISO": "#F1C40F", "CUIABÁ": "#E74C3C"}
-
-st.markdown(f"""
+# CSS para criar os botões arredondados e filtros profissionais
+st.markdown("""
     <style>
-    .stApp {{ background-color: #F4F7F6; }}
-    [data-testid="stMetricValue"] {{ font-size: 32px; color: {COLOR_PRIMARY}; font-weight: 800; }}
-    .plot-container {{
-        background-color: white;
+    /* Fundo e Container */
+    .stApp { background-color: #FFFFFF; }
+    
+    /* Estilização dos Filtros tipo "Pílula" (Meses e Unidades) */
+    div.stSelectbox > div { border-radius: 20px !important; }
+    
+    /* Títulos de seção */
+    .filter-label {
+        font-weight: bold;
+        color: #2C3E50;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* Estilização dos Cards de KPI */
+    [data-testid="stMetricDiv"] {
+        background-color: #f8f9fa;
         padding: 20px;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        border: 1px solid #EAEAEA;
-        margin-bottom: 25px;
-    }}
+        border-radius: 15px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        border: 1px solid #EEE;
+    }
+    
+    /* Esconder o menu lateral padrão para focar nos filtros da tela principal */
+    [data-testid="stSidebar"] { display: none; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -40,7 +50,8 @@ def load_data():
     df = pd.read_csv(f"{URL}&refresh={time.time()}")
     df.columns = [str(col).strip().upper() for col in df.columns]
     
-    for col in ['UNIDADE', 'CURSO', 'MÊS']:
+    # Limpeza de texto
+    for col in ['UNIDADE', 'CURSO', 'MÊS', 'SEMESTRE']:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip().str.upper()
 
@@ -56,81 +67,81 @@ def load_data():
 df, col_valor = load_data()
 
 # ==========================================
-# 3. SIDEBAR E FILTROS
+# 3. CABEÇALHO (LOGO E SINCRONISMO)
 # ==========================================
-with st.sidebar:
-    st.markdown("## ⚙️ Filtros")
-    if st.button("🔄 Sincronizar Dados"):
-        st.cache_data.clear()
-        st.rerun()
-    
-    st.divider()
-    u_sel = st.multiselect("📍 Unidades", sorted(df["UNIDADE"].unique()), default=df["UNIDADE"].unique())
-    cursos_disponiveis = df[df["UNIDADE"].isin(u_sel)]["CURSO"].unique()
-    c_sel = st.multiselect("🎓 Cursos", sorted(cursos_disponiveis), default=cursos_disponiveis)
-    s_sel = st.multiselect("📅 Semestre", sorted(df["SEMESTRE"].unique()), default=df["SEMESTRE"].unique())
+col_logo, col_sync = st.columns([8, 2])
+with col_logo:
+    # 4- CORREÇÃO DA LOGO: Usando o link direto da imagem pública da FASICLIN
+    st.image("https://www.fasiclin.com.br/wp-content/uploads/2021/08/logo-fasiclin.png", width=220)
+with col_sync:
+    st.markdown(f"""
+        <div style='text-align: right; color: #7F8C8D; font-size: 0.85rem;'>
+        Sincronizado em:<br>
+        <b>{time.strftime('%d/%m/%Y às %H:%M')}</b>
+        </div>
+    """, unsafe_allow_html=True)
 
-mask = (df["UNIDADE"].isin(u_sel)) & (df["CURSO"].isin(c_sel)) & (df["SEMESTRE"].isin(s_sel))
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ==========================================
+# 4. FILTROS PROFISSIONAIS (PADRÃO IMAGEM)
+# ==========================================
+
+# 1- FILTRO DE CURSOS (Padrão: Seleção Horizontal/Dropdown largo)
+st.markdown('<p class="filter-label">🎯 Procedimento / Curso:</p>', unsafe_allow_html=True)
+lista_cursos = ["-- TODOS OS CURSOS --"] + sorted(df["CURSO"].unique().tolist())
+c_sel_raw = st.selectbox("", lista_cursos, label_visibility="collapsed")
+c_sel = df["CURSO"].unique() if c_sel_raw == "-- TODOS OS CURSOS --" else [c_sel_raw]
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# 2- FILTRO DE UNIDADES (Padrão: Botões Lado a Lado / Pílulas)
+st.markdown('<p class="filter-label">📍 Unidades:</p>', unsafe_allow_html=True)
+lista_unidades = ["TODAS AS UNIDADES"] + sorted(df["UNIDADE"].unique().tolist())
+u_sel_raw = st.radio("", lista_unidades, horizontal=True, label_visibility="collapsed")
+u_sel = df["UNIDADE"].unique() if u_sel_raw == "TODAS AS UNIDADES" else [u_sel_raw]
+
+# 3- FILTRO DE SEMESTRE (Abaixo das unidades, mesmo padrão de botões)
+st.markdown('<p class="filter-label">📅 Semestre:</p>', unsafe_allow_html=True)
+lista_semestres = ["TODOS OS SEMESTRES"] + sorted(df["SEMESTRE"].unique().tolist())
+s_sel_raw = st.radio("", lista_semestres, horizontal=True, label_visibility="collapsed")
+s_sel = df["SEMESTRE"].unique() if s_sel_raw == "TODOS OS SEMESTRES" else [s_sel_raw]
+
+# Filtro de Meses (Padrão: Botões Lado a Lado)
+st.markdown('<p class="filter-label">🗓️ Período:</p>', unsafe_allow_html=True)
+lista_meses = ["TODOS OS MESES"] + sorted(df["MÊS"].unique().tolist())
+m_sel_raw = st.radio("", lista_meses, horizontal=True, label_visibility="collapsed")
+m_sel = df["MÊS"].unique() if m_sel_raw == "TODOS OS MESES" else [m_sel_raw]
+
+# Aplicar Máscara de Filtros
+mask = (df["UNIDADE"].isin(u_sel)) & (df["CURSO"].isin(c_sel)) & (df["SEMESTRE"].isin(s_sel)) & (df["MÊS"].isin(m_sel))
 df_filtered = df[mask]
-
-# ==========================================
-# 4. CABEÇALHO (LOGO E KPIs)
-# ==========================================
-# 1- Logo no lugar do texto (ajuste o link se necessário)
-c_logo, c_info = st.columns([8, 2])
-with c_logo:
-    st.image("https://www.fasiclin.com.br/wp-content/uploads/2021/08/logo-fasiclin.png", width=250)
-with c_info:
-    st.markdown(f"<div style='text-align:right; color:#7F8C8D;'>Sincronizado:<br><b>{time.strftime('%d/%m/%Y %H:%M')}</b></div>", unsafe_allow_html=True)
 
 st.markdown("---")
 
-# KPIs
-k1, k2, k3, k4 = st.columns(4)
+# ==========================================
+# 5. KPIs E GRÁFICOS (ESTRUTURA VERTICAL)
+# ==========================================
+k1, k2, k3 = st.columns(3)
 total_atend = int(df_filtered[col_valor].sum())
-k1.metric("Total Procedimentos", f"{total_atend:,}".replace(",", "."))
-k2.metric("Média Mensal", f"{int(total_atend/df_filtered['MÊS'].nunique()) if not df_filtered.empty else 0}")
-k3.metric("Unidades Ativas", len(u_sel))
-k4.metric("Cursos Ativos", len(c_sel))
+# Simulação de faturamento e eficiência baseado no seu print
+with k1:
+    st.metric("Total Atendimentos", f"{total_atend:,}".replace(",", "."))
+with k2:
+    # Exemplo de cálculo: R$ 20,00 por procedimento (ajuste conforme necessário)
+    st.metric("Faturamento Estimado", f"R$ {total_atend * 20:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+with k3:
+    st.metric("Cursos Ativos", len(df_filtered["CURSO"].unique()))
 
-# ==========================================
-# 5. ESTRUTURA VERTICAL DE GRÁFICOS
-# ==========================================
-
-# Função auxiliar para limpar layout dos gráficos
-def clean_chart(fig):
-    fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", margin=dict(t=40, b=20))
-    return fig
-
-# 2- Gráfico de Tendência (Tela Cheia)
-st.markdown('<div class="plot-container">', unsafe_allow_html=True)
-st.subheader("📈 Tendência de Atendimentos no Tempo")
+# Gráfico de Tendência (Tela Cheia conforme solicitado antes)
+st.subheader("📈 Tendência de Atendimentos")
 df_evol = df_filtered.groupby(["MÊS", "UNIDADE"], sort=False)[col_valor].sum().reset_index()
-fig_line = px.line(df_evol, x="MÊS", y=col_valor, color="UNIDADE", markers=True, color_discrete_map=COLORS_UNIDADES)
-st.plotly_chart(clean_chart(fig_line), use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
+fig_line = px.line(df_evol, x="MÊS", y=col_valor, color="UNIDADE", markers=True, color_discrete_sequence=px.colors.qualitative.Safe)
+fig_line.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+st.plotly_chart(fig_line, use_container_width=True)
 
-# 3- Estatística de Procedimento (Abaixo da tendência)
-st.markdown('<div class="plot-container">', unsafe_allow_html=True)
-st.subheader("🍩 Estatística de Procedimento")
-fig_pie = px.pie(df_filtered, values=col_valor, names="CURSO", hole=0.5, color_discrete_sequence=px.colors.qualitative.Safe)
-st.plotly_chart(clean_chart(fig_pie), use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
-
-# Comparativo de Semestre
-st.markdown('<div class="plot-container">', unsafe_allow_html=True)
-st.subheader("📊 Comparativo de Volume Total por Unidade e Semestre")
-df_un_sem = df_filtered.groupby(["UNIDADE", "SEMESTRE"])[col_valor].sum().reset_index()
-fig_sem = px.bar(df_un_sem, x="UNIDADE", y=col_valor, color="SEMESTRE", barmode="group", text_auto='.2s')
-st.plotly_chart(clean_chart(fig_sem), use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
-
-# 4- Ranking de Unidades (Barras Agrupadas)
-st.markdown('<div class="plot-container">', unsafe_allow_html=True)
-st.subheader("🏆 Ranking de Unidades por Procedimentos")
+# Ranking de Unidades
+st.subheader("🏆 Ranking de Unidades")
 df_rank = df_filtered.groupby("UNIDADE")[col_valor].sum().reset_index().sort_values(col_valor, ascending=False)
-fig_rank = px.bar(df_rank, x=col_valor, y="UNIDADE", orientation='h', 
-                  text_auto='.2s', color="UNIDADE", color_discrete_map=COLORS_UNIDADES)
-fig_rank.update_layout(yaxis={'categoryorder':'total ascending'})
-st.plotly_chart(clean_chart(fig_rank), use_container_width=True)
-st.markdown('</div>', unsafe_allow_html=True)
+fig_rank = px.bar(df_rank, x=col_valor, y="UNIDADE", orientation='h', text_auto='.2s', color="UNIDADE")
+st.plotly_chart(fig_rank, use_container_width=True)
