@@ -13,67 +13,63 @@ st.markdown("""
     <style>
     .stApp { background-color: #FFFFFF; }
     div.stSelectbox > div { border-radius: 10px !important; background-color: #F0F2F6; border: none; }
-    
-    .filter-label {
-        font-weight: bold;
-        color: #2C3E50;
-        margin-bottom: 5px;
-        margin-top: 15px;
-        font-size: 0.9rem;
-    }
-    
-    [data-testid="stMetricDiv"] {
-        background-color: #f8f9fa;
-        padding: 20px;
-        border-radius: 15px;
-        border: 1px solid #EEE;
-    }
+    .filter-label { font-weight: bold; color: #2C3E50; margin-bottom: 5px; margin-top: 15px; font-size: 0.9rem; }
+    [data-testid="stMetricDiv"] { background-color: #f8f9fa; padding: 20px; border-radius: 15px; border: 1px solid #EEE; }
     [data-testid="stSidebar"] { display: none; }
     </style>
     """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CARREGAMENTO E TRATAMENTO DE DADOS
+# 2. CARREGAMENTO E TRATAMENTO DE DADOS (CORRIGIDO)
 # ==========================================
 @st.cache_data(ttl=600)
 def load_data():
     URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpHTm4l6jKCsZTLaSJjDZn-TYdaoxla54U9hhkJLdBe_HC5QNrWleCaLkq7_UglTMXP-muYt4hNKAI/pub?output=csv"
+    # Adicionando o timestamp para evitar cache do Google
     df = pd.read_csv(f"{URL}&refresh={time.time()}")
     
-    # Padronização de colunas
+    # 1. Limpa nomes de colunas duplicadas ou com espaços
     df.columns = [str(col).strip().upper() for col in df.columns]
     
-    # Ordem cronológica dos meses
+    # 2. Garante que as colunas de filtro sejam strings e limpas (CORREÇÃO DO ERRO)
+    cols_para_limpar = ['UNIDADE', 'CURSO', 'MÊS', 'SEMESTRE']
+    for col in cols_para_limpar:
+        if col in df.columns:
+            # Forçamos a conversão para string e pegamos apenas a primeira ocorrência caso haja duplicatas
+            df[col] = df[col].astype(str).get(col) if isinstance(df[col], pd.DataFrame) else df[col].astype(str)
+            df[col] = df[col].str.strip().upper()
+
+    # 3. Ordem cronológica
     ordem_meses = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", 
                    "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"]
-    
-    for col in ['UNIDADE', 'CURSO', 'MÊS', 'SEMESTRE']:
-        if col in df.columns:
-            df[col] = df[col].astype(str).str.strip().upper()
-    
-    # Aplicando a ordenação categórica no mês
     df['MÊS'] = pd.Categorical(df['MÊS'], categories=ordem_meses, ordered=True)
             
+    # 4. Localiza a coluna de valores
     target_col = "QUANTIDADE_PROCEDIMENTO"
     for col in df.columns:
         if "QUANTIDADE" in col:
             target_col = col
             break
+    
     df[target_col] = pd.to_numeric(df[target_col], errors='coerce').fillna(0)
     return df, target_col
 
-df, col_valor = load_data()
+# Tenta carregar os dados
+try:
+    df, col_valor = load_data()
+except Exception as e:
+    st.error(f"Erro ao carregar dados: {e}")
+    st.stop()
 
 # ==========================================
 # 3. CABEÇALHO
 # ==========================================
 col_logo, col_sync = st.columns([8, 2])
 with col_logo:
-    # Tente carregar a logo, se falhar exibe apenas o título
     try:
         st.image("image_1.png", width=220)
     except:
-        st.title("🏥 Dashboard FASICLIN")
+        st.subheader("🏥 Dashboard FASICLIN")
 
 with col_sync:
     st.markdown(f"<div style='text-align: right; color: #7F8C8D; padding-top:10px;'><b>{time.strftime('%d/%m/%Y %H:%M')}</b></div>", unsafe_allow_html=True)
@@ -116,48 +112,36 @@ s_sel = df["SEMESTRE"].unique() if s_sel_raw == "TODOS" else [s_sel_raw]
 mask = (df["UNIDADE"].isin(u_sel)) & (df["CURSO"].isin(c_sel)) & (df["SEMESTRE"].isin(s_sel))
 df_filtered = df[mask]
 
-st.markdown("<br>", unsafe_allow_html=True)
-
 # ==========================================
 # 5. KPIs E GRÁFICOS
 # ==========================================
+st.markdown("<br>", unsafe_allow_html=True)
 k1, k2, k3 = st.columns(3)
 total_atend = int(df_filtered[col_valor].sum())
 with k1: st.metric("Total de Atendimentos", f"{total_atend:,}".replace(",", "."))
 with k2: st.metric("Cursos Ativos", len(df_filtered["CURSO"].unique()))
 with k3: st.metric("Média por Unidade", f"{int(total_atend/len(u_sel)) if len(u_sel)>0 else 0}")
 
-# Função para limpar o layout dos gráficos
 def update_chart_style(fig):
     fig.update_layout(
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=20, r=20, t=30, b=20),
-        xaxis=dict(showgrid=False),
-        yaxis=dict(showgrid=True, gridcolor="#EEE")
+        xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor="#EEE")
     )
     return fig
 
-# 1. Tendência (Agora com ordenação correta)
 st.markdown('<p class="filter-label">📈 TENDÊNCIA DE ATENDIMENTOS</p>', unsafe_allow_html=True)
-df_evol = df_filtered.groupby(["MÊS", "UNIDADE"], sort=True)[col_valor].sum().reset_index()
-fig_line = px.line(df_evol, x="MÊS", y=col_valor, color="UNIDADE", markers=True,
-                  color_discrete_sequence=px.colors.qualitative.Safe)
+df_evol = df_filtered.groupby(["MÊS", "UNIDADE"], sort=True, observed=False)[col_valor].sum().reset_index()
+fig_line = px.line(df_evol, x="MÊS", y=col_valor, color="UNIDADE", markers=True, color_discrete_sequence=px.colors.qualitative.Safe)
 st.plotly_chart(update_chart_style(fig_line), use_container_width=True)
 
-# 2. Donut e Ranking lado a lado para melhor aproveitamento de tela
 c1, c2 = st.columns(2)
-
 with c1:
     st.markdown('<p class="filter-label">🍩 DISTRIBUIÇÃO POR CURSO</p>', unsafe_allow_html=True)
-    fig_pie = px.pie(df_filtered, values=col_valor, names="CURSO", hole=0.5,
-                    color_discrete_sequence=px.colors.qualitative.Pastel)
-    fig_pie.update_layout(margin=dict(l=20, r=20, t=30, b=20))
+    fig_pie = px.pie(df_filtered, values=col_valor, names="CURSO", hole=0.5, color_discrete_sequence=px.colors.qualitative.Pastel)
     st.plotly_chart(fig_pie, use_container_width=True)
-
 with c2:
     st.markdown('<p class="filter-label">🏆 RANKING DE UNIDADES</p>', unsafe_allow_html=True)
     df_rank = df_filtered.groupby("UNIDADE")[col_valor].sum().reset_index().sort_values(col_valor, ascending=True)
-    fig_rank = px.bar(df_rank, x=col_valor, y="UNIDADE", orientation='h', 
-                     text_auto='.2s', color="UNIDADE", color_discrete_sequence=["#1ABC9C"])
+    fig_rank = px.bar(df_rank, x=col_valor, y="UNIDADE", orientation='h', text_auto='.2s', color="UNIDADE", color_discrete_sequence=["#1ABC9C"])
     st.plotly_chart(update_chart_style(fig_rank), use_container_width=True)
