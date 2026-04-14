@@ -20,31 +20,32 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CARREGAMENTO E TRATAMENTO DE DADOS (CORRIGIDO)
+# 2. CARREGAMENTO E TRATAMENTO DE DADOS (VERSÃO FINAL)
 # ==========================================
 @st.cache_data(ttl=600)
 def load_data():
     URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpHTm4l6jKCsZTLaSJjDZn-TYdaoxla54U9hhkJLdBe_HC5QNrWleCaLkq7_UglTMXP-muYt4hNKAI/pub?output=csv"
-    # Adicionando o timestamp para evitar cache do Google
     df = pd.read_csv(f"{URL}&refresh={time.time()}")
     
-    # 1. Limpa nomes de colunas duplicadas ou com espaços
+    # 1. Padroniza nomes das colunas
     df.columns = [str(col).strip().upper() for col in df.columns]
     
-    # 2. Garante que as colunas de filtro sejam strings e limpas (CORREÇÃO DO ERRO)
+    # 2. Garante que as colunas de filtro sejam strings e limpas (CORRIGIDO)
     cols_para_limpar = ['UNIDADE', 'CURSO', 'MÊS', 'SEMESTRE']
     for col in cols_para_limpar:
         if col in df.columns:
-            # Forçamos a conversão para string e pegamos apenas a primeira ocorrência caso haja duplicatas
-            df[col] = df[col].astype(str).get(col) if isinstance(df[col], pd.DataFrame) else df[col].astype(str)
-            df[col] = df[col].str.strip().upper()
+            # Primeiro convertemos para string, depois usamos .str para tratar o texto
+            df[col] = df[col].astype(str).str.strip().str.upper()
 
-    # 3. Ordem cronológica
+    # 3. Ordem cronológica dos meses
     ordem_meses = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", 
                    "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"]
-    df['MÊS'] = pd.Categorical(df['MÊS'], categories=ordem_meses, ordered=True)
+    
+    # Se houver meses na planilha, força a ordem cronológica
+    if 'MÊS' in df.columns:
+        df['MÊS'] = pd.Categorical(df['MÊS'], categories=ordem_meses, ordered=True)
             
-    # 4. Localiza a coluna de valores
+    # 4. Localiza a coluna de valores (Quantidade)
     target_col = "QUANTIDADE_PROCEDIMENTO"
     for col in df.columns:
         if "QUANTIDADE" in col:
