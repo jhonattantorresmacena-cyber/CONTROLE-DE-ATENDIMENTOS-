@@ -5,7 +5,7 @@ import time
 from streamlit_option_menu import option_menu
 
 # ==========================================
-# 1. CONFIGURAÇÃO E ESTILIZAÇÃO CUSTOMIZADA
+# 1. CONFIGURAÇÃO E ESTILIZAÇÃO
 # ==========================================
 st.set_page_config(page_title="Dashboard FASICLIN", layout="wide", page_icon="🏥")
 
@@ -20,46 +20,46 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CARREGAMENTO E TRATAMENTO DE DADOS (VERSÃO FINAL)
+# 2. CARREGAMENTO E TRATAMENTO DE DADOS
 # ==========================================
 @st.cache_data(ttl=600)
 def load_data():
     URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpHTm4l6jKCsZTLaSJjDZn-TYdaoxla54U9hhkJLdBe_HC5QNrWleCaLkq7_UglTMXP-muYt4hNKAI/pub?output=csv"
     df = pd.read_csv(f"{URL}&refresh={time.time()}")
     
-    # 1. Padroniza nomes das colunas
+    # Limpeza radical de nomes de colunas: maiúsculo e sem espaços nas pontas
     df.columns = [str(col).strip().upper() for col in df.columns]
     
-    # 2. Garante que as colunas de filtro sejam strings e limpas (CORRIGIDO)
-    cols_para_limpar = ['UNIDADE', 'CURSO', 'MÊS', 'SEMESTRE']
-    for col in cols_para_limpar:
-        if col in df.columns:
-            # Primeiro convertemos para string, depois usamos .str para tratar o texto
+    # Tratamento de dados nas colunas
+    # Verificamos se as colunas existem antes de tratar para evitar o KeyError
+    for col in df.columns:
+        if col in ['UNIDADE', 'CURSO', 'MÊS', 'SEMESTRE']:
             df[col] = df[col].astype(str).str.strip().str.upper()
 
-    # 3. Ordem cronológica dos meses
+    # Ordem cronológica
     ordem_meses = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", 
                    "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"]
-    
-    # Se houver meses na planilha, força a ordem cronológica
     if 'MÊS' in df.columns:
         df['MÊS'] = pd.Categorical(df['MÊS'], categories=ordem_meses, ordered=True)
             
-    # 4. Localiza a coluna de valores (Quantidade)
-    target_col = "QUANTIDADE_PROCEDIMENTO"
+    # Localiza a coluna de valor
+    target_col = None
     for col in df.columns:
         if "QUANTIDADE" in col:
             target_col = col
             break
     
+    if not target_col:
+        # Se não achar nada com "quantidade", tenta pegar a última coluna numérica
+        target_col = df.select_dtypes(include=['number']).columns[-1]
+
     df[target_col] = pd.to_numeric(df[target_col], errors='coerce').fillna(0)
     return df, target_col
 
-# Tenta carregar os dados
 try:
     df, col_valor = load_data()
 except Exception as e:
-    st.error(f"Erro ao carregar dados: {e}")
+    st.error(f"Erro crítico no carregamento: {e}. Verifique os nomes das colunas na planilha.")
     st.stop()
 
 # ==========================================
@@ -76,36 +76,37 @@ with col_sync:
     st.markdown(f"<div style='text-align: right; color: #7F8C8D; padding-top:10px;'><b>{time.strftime('%d/%m/%Y %H:%M')}</b></div>", unsafe_allow_html=True)
 
 # ==========================================
-# 4. FILTROS
+# 4. FILTROS COM TRATAMENTO DE ERRO
 # ==========================================
+# Se por acaso uma coluna sumir da planilha, o código não quebra
+def get_options(column_name, default_label):
+    if column_name in df.columns:
+        return [default_label] + sorted(df[column_name].unique().tolist())
+    return [default_label]
+
+# CURSO
 st.markdown('<p class="filter-label">🎯 PROCEDIMENTO / CURSO</p>', unsafe_allow_html=True)
-lista_cursos = ["TODOS OS CURSOS"] + sorted(df["CURSO"].unique().tolist())
+lista_cursos = get_options("CURSO", "TODOS OS CURSOS")
 c_sel_raw = st.selectbox("", lista_cursos, label_visibility="collapsed")
 c_sel = df["CURSO"].unique() if c_sel_raw == "TODOS OS CURSOS" else [c_sel_raw]
 
+# UNIDADE
 st.markdown('<p class="filter-label">📍 UNIDADES</p>', unsafe_allow_html=True)
-lista_unidades = ["TODAS"] + sorted(df["UNIDADE"].unique().tolist())
+lista_unidades = get_options("UNIDADE", "TODAS")
 u_sel_raw = option_menu(None, lista_unidades, 
-    icons=['house', 'geo-alt', 'geo-alt', 'geo-alt'], 
+    icons=['house', 'geo-alt', 'geo-alt', 'geo-alt', 'geo-alt'], 
     menu_icon="cast", default_index=0, orientation="horizontal",
-    styles={
-        "container": {"padding": "0!important", "background-color": "#fafafa"},
-        "nav-link": {"font-size": "14px", "text-align": "center", "margin":"0px", "--hover-color": "#eee"},
-        "nav-link-selected": {"background-color": "#1ABC9C"}, 
-    }
+    styles={"nav-link-selected": {"background-color": "#1ABC9C"}}
 )
 u_sel = df["UNIDADE"].unique() if u_sel_raw == "TODAS" else [u_sel_raw]
 
+# SEMESTRE
 st.markdown('<p class="filter-label">📅 SEMESTRE</p>', unsafe_allow_html=True)
-lista_semestres = ["TODOS"] + sorted(df["SEMESTRE"].unique().tolist())
+lista_semestres = get_options("SEMESTRE", "TODOS")
 s_sel_raw = option_menu(None, lista_semestres, 
-    icons=['calendar-range', 'calendar-check', 'calendar-check'], 
+    icons=['calendar', 'calendar-check', 'calendar-check'], 
     menu_icon="cast", default_index=0, orientation="horizontal",
-    styles={
-        "container": {"padding": "0!important", "background-color": "#fafafa"},
-        "nav-link": {"font-size": "14px", "text-align": "center", "margin":"0px", "--hover-color": "#eee"},
-        "nav-link-selected": {"background-color": "#3498DB"},
-    }
+    styles={"nav-link-selected": {"background-color": "#3498DB"}}
 )
 s_sel = df["SEMESTRE"].unique() if s_sel_raw == "TODOS" else [s_sel_raw]
 
@@ -123,26 +124,19 @@ with k1: st.metric("Total de Atendimentos", f"{total_atend:,}".replace(",", ".")
 with k2: st.metric("Cursos Ativos", len(df_filtered["CURSO"].unique()))
 with k3: st.metric("Média por Unidade", f"{int(total_atend/len(u_sel)) if len(u_sel)>0 else 0}")
 
-def update_chart_style(fig):
-    fig.update_layout(
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        margin=dict(l=20, r=20, t=30, b=20),
-        xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor="#EEE")
-    )
+def style_fig(fig):
+    fig.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)", margin=dict(l=10, r=10, t=30, b=10))
     return fig
 
 st.markdown('<p class="filter-label">📈 TENDÊNCIA DE ATENDIMENTOS</p>', unsafe_allow_html=True)
 df_evol = df_filtered.groupby(["MÊS", "UNIDADE"], sort=True, observed=False)[col_valor].sum().reset_index()
-fig_line = px.line(df_evol, x="MÊS", y=col_valor, color="UNIDADE", markers=True, color_discrete_sequence=px.colors.qualitative.Safe)
-st.plotly_chart(update_chart_style(fig_line), use_container_width=True)
+st.plotly_chart(style_fig(px.line(df_evol, x="MÊS", y=col_valor, color="UNIDADE", markers=True)), use_container_width=True)
 
 c1, c2 = st.columns(2)
 with c1:
-    st.markdown('<p class="filter-label">🍩 DISTRIBUIÇÃO POR CURSO</p>', unsafe_allow_html=True)
-    fig_pie = px.pie(df_filtered, values=col_valor, names="CURSO", hole=0.5, color_discrete_sequence=px.colors.qualitative.Pastel)
-    st.plotly_chart(fig_pie, use_container_width=True)
+    st.markdown('<p class="filter-label">🍩 DISTRIBUIÇÃO</p>', unsafe_allow_html=True)
+    st.plotly_chart(px.pie(df_filtered, values=col_valor, names="CURSO", hole=0.5), use_container_width=True)
 with c2:
-    st.markdown('<p class="filter-label">🏆 RANKING DE UNIDADES</p>', unsafe_allow_html=True)
+    st.markdown('<p class="filter-label">🏆 RANKING</p>', unsafe_allow_html=True)
     df_rank = df_filtered.groupby("UNIDADE")[col_valor].sum().reset_index().sort_values(col_valor, ascending=True)
-    fig_rank = px.bar(df_rank, x=col_valor, y="UNIDADE", orientation='h', text_auto='.2s', color="UNIDADE", color_discrete_sequence=["#1ABC9C"])
-    st.plotly_chart(update_chart_style(fig_rank), use_container_width=True)
+    st.plotly_chart(style_fig(px.bar(df_rank, x=col_valor, y="UNIDADE", orientation='h', color_discrete_sequence=["#1ABC9C"])), use_container_width=True)
