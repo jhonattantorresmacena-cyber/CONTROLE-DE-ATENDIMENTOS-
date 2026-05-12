@@ -77,7 +77,9 @@ with col_sync:
 # ==========================================
 def get_options(column_name, default_label):
     if column_name in df.columns:
-        return [default_label] + sorted(df[column_name].unique().tolist())
+        # Converte tudo para string para evitar erro de comparação entre float e str
+        valores = df[column_name].astype(str).unique().tolist()
+        return [default_label] + sorted(valores)
     return [default_label]
 
 st.markdown('<p class="filter-label">🎯 PROCEDIMENTO / CURSO</p>', unsafe_allow_html=True)
