@@ -96,26 +96,11 @@ def get_options(column_name, default_label, reverse=False):
         return [default_label] + sorted(valores, reverse=reverse)
     return [default_label]
 
-# --- FILTRO: CURSO (Mantido em selectbox pois costuma ter muitas opções) ---
+# --- FILTRO: CURSO (Mantido em selectbox) ---
 st.markdown('<p class="filter-label">🎯 PROCEDIMENTO / CURSO</p>', unsafe_allow_html=True)
 lista_cursos = get_options("CURSO", "TODOS OS CURSOS")
 c_sel_raw = st.selectbox("", lista_cursos, key="filtro_curso", label_visibility="collapsed")
 c_sel = df["CURSO"].unique() if c_sel_raw == "TODOS OS CURSOS" else [c_sel_raw]
-
-# --- FILTRO: ANO (Agora no mesmo padrão horizontal) ---
-st.markdown('<p class="filter-label">📅 ANO DE REFERÊNCIA</p>', unsafe_allow_html=True)
-if df[col_ano].iloc[0] == "N/A":
-    st.warning("⚠️ Atenção: Nenhuma coluna de 'ANO' foi identificada na sua planilha do Google Sheets.")
-    a_sel = df[col_ano].unique()
-else:
-    lista_anos = get_options(col_ano, "TODOS OS ANOS", reverse=True)
-    a_sel_raw = option_menu(None, lista_anos, 
-        icons=['calendar4-range'] + ['calendar3']*(len(lista_anos)-1), 
-        menu_icon="cast", default_index=0, orientation="horizontal",
-        styles={"nav-link-selected": {"background-color": "#2C3E50"}}, # Azul Escuro/Grafite para o Ano
-        key="filtro_ano"
-    )
-    a_sel = df[col_ano].unique() if a_sel_raw == "TODOS OS ANOS" else [a_sel_raw]
 
 # --- FILTRO: UNIDADES ---
 st.markdown('<p class="filter-label">📍 UNIDADES</p>', unsafe_allow_html=True)
@@ -128,6 +113,22 @@ u_sel_raw = option_menu(None, lista_unidades,
 )
 u_sel = df["UNIDADE"].unique() if u_sel_raw == "TODAS" else [u_sel_raw]
 
+# --- FILTRO: ANO (Alterado para ordem crescente: mais antigo para o mais novo) ---
+st.markdown('<p class="filter-label">📅 ANO DE REFERÊNCIA</p>', unsafe_allow_html=True)
+if df[col_ano].iloc[0] == "N/A":
+    st.warning("⚠️ Atenção: Nenhuma coluna de 'ANO' foi identificada na sua planilha do Google Sheets.")
+    a_sel = df[col_ano].unique()
+else:
+    # Mudamos reverse para False para ordenar do menor para o maior (ex: 2024, 2025, 2026)
+    lista_anos = get_options(col_ano, "TODOS OS ANOS", reverse=False)
+    a_sel_raw = option_menu(None, lista_anos, 
+        icons=['calendar4-range'] + ['calendar3']*(len(lista_anos)-1), 
+        menu_icon="cast", default_index=0, orientation="horizontal",
+        styles={"nav-link-selected": {"background-color": "#2C3E50"}}, # Azul Escuro/Grafite para o Ano
+        key="filtro_ano"
+    )
+    a_sel = df[col_ano].unique() if a_sel_raw == "TODOS OS ANOS" else [a_sel_raw]
+
 # --- FILTRO: SEMESTRE ---
 st.markdown('<p class="filter-label">📅 SEMESTRE</p>', unsafe_allow_html=True)
 lista_semestres = get_options("SEMESTRE", "TODOS")
@@ -139,7 +140,7 @@ s_sel_raw = option_menu(None, lista_semestres,
 )
 s_sel = df["SEMESTRE"].unique() if s_sel_raw == "TODOS" else [s_sel_raw]
 
-# Filtro final (Mantendo a lógica dinâmica)
+# Filtro final
 mask = (df["UNIDADE"].isin(u_sel)) & (df["CURSO"].isin(c_sel)) & (df["SEMESTRE"].isin(s_sel)) & (df[col_ano].isin(a_sel))
 df_filtered = df[mask]
 
