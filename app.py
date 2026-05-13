@@ -96,6 +96,12 @@ def get_options(column_name, default_label, reverse=False):
         return [default_label] + sorted(valores, reverse=reverse)
     return [default_label]
 
+# --- FILTRO: CURSO (Mantido em selectbox pois costuma ter muitas opções) ---
+st.markdown('<p class="filter-label">🎯 PROCEDIMENTO / CURSO</p>', unsafe_allow_html=True)
+lista_cursos = get_options("CURSO", "TODOS OS CURSOS")
+c_sel_raw = st.selectbox("", lista_cursos, key="filtro_curso", label_visibility="collapsed")
+c_sel = df["CURSO"].unique() if c_sel_raw == "TODOS OS CURSOS" else [c_sel_raw]
+
 # --- FILTRO: ANO (Agora no mesmo padrão horizontal) ---
 st.markdown('<p class="filter-label">📅 ANO DE REFERÊNCIA</p>', unsafe_allow_html=True)
 if df[col_ano].iloc[0] == "N/A":
@@ -110,12 +116,6 @@ else:
         key="filtro_ano"
     )
     a_sel = df[col_ano].unique() if a_sel_raw == "TODOS OS ANOS" else [a_sel_raw]
-
-# --- FILTRO: CURSO (Mantido em selectbox pois costuma ter muitas opções) ---
-st.markdown('<p class="filter-label">🎯 PROCEDIMENTO / CURSO</p>', unsafe_allow_html=True)
-lista_cursos = get_options("CURSO", "TODOS OS CURSOS")
-c_sel_raw = st.selectbox("", lista_cursos, key="filtro_curso", label_visibility="collapsed")
-c_sel = df["CURSO"].unique() if c_sel_raw == "TODOS OS CURSOS" else [c_sel_raw]
 
 # --- FILTRO: UNIDADES ---
 st.markdown('<p class="filter-label">📍 UNIDADES</p>', unsafe_allow_html=True)
