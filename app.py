@@ -30,8 +30,9 @@ def load_data():
     # Padronização de colunas
     df.columns = [str(col).strip().upper() for col in df.columns]
     
+    # Tratando 'ANO' como string/categoria para evitar que seja somado por engano
     for col in df.columns:
-        if col in ['UNIDADE', 'CURSO', 'MÊS', 'SEMESTRE']:
+        if col in ['UNIDADE', 'CURSO', 'MÊS', 'SEMESTRE', 'ANO']:
             df[col] = df[col].astype(str).str.strip().str.upper()
 
     # Ordem cronológica dos meses
@@ -40,15 +41,18 @@ def load_data():
     if 'MÊS' in df.columns:
         df['MÊS'] = pd.Categorical(df['MÊS'], categories=ordem_meses, ordered=True)
             
-    # Localiza a coluna de valor (Quantidade)
+    # Localiza a coluna de valor (Quantidade de Procedimentos) descartando a coluna ANO
     target_col = None
     for col in df.columns:
-        if "QUANTIDADE" in col:
+        if "QUANTIDADE" in col and "ANO" not in col:
             target_col = col
             break
     
     if not target_col:
-        target_col = df.select_dtypes(include=['number']).columns[-1]
+        # Pega a última coluna numérica que não seja explicitamente o ANO
+        colunas_numericas = df.select_dtypes(include=['number']).columns
+        colunas_filtradas = [c for c in colunas_numericas if "ANO" not in c]
+        target_col = colunas_filtradas[-1] if colunas_filtradas else colunas_numericas[-1]
 
     df[target_col] = pd.to_numeric(df[target_col], errors='coerce').fillna(0)
     return df, target_col
@@ -75,16 +79,21 @@ with col_sync:
 # ==========================================
 # 4. FILTROS
 # ==========================================
-def get_options(column_name, default_label):
+def get_options(column_name, default_label, reverse=False):
     if column_name in df.columns:
-        # Converte tudo para string para evitar erro de comparação entre float e str
         valores = df[column_name].astype(str).unique().tolist()
-        return [default_label] + sorted(valores)
+        return [default_label] + sorted(valores, reverse=reverse)
     return [default_label]
+
+# --- NOVO FILTRO: ANO ---
+st.markdown('<p class="filter-label">📅 ANO DE REFERÊNCIA</p>', unsafe_allow_html=True)
+lista_anos = get_options("ANO", "TODOS OS ANOS", reverse=True) # Anos mais recentes primeiro
+a_sel_raw = st.selectbox("", lista_anos, key="filtro_ano", label_visibility="collapsed")
+a_sel = df["ANO"].unique() if a_sel_raw == "TODOS OS ANOS" else [a_sel_raw]
 
 st.markdown('<p class="filter-label">🎯 PROCEDIMENTO / CURSO</p>', unsafe_allow_html=True)
 lista_cursos = get_options("CURSO", "TODOS OS CURSOS")
-c_sel_raw = st.selectbox("", lista_cursos, label_visibility="collapsed")
+c_sel_raw = st.selectbox("", lista_cursos, key="filtro_curso", label_visibility="collapsed")
 c_sel = df["CURSO"].unique() if c_sel_raw == "TODOS OS CURSOS" else [c_sel_raw]
 
 st.markdown('<p class="filter-label">📍 UNIDADES</p>', unsafe_allow_html=True)
@@ -92,7 +101,8 @@ lista_unidades = get_options("UNIDADE", "TODAS")
 u_sel_raw = option_menu(None, lista_unidades, 
     icons=['house'] + ['geo-alt']*(len(lista_unidades)-1), 
     menu_icon="cast", default_index=0, orientation="horizontal",
-    styles={"nav-link-selected": {"background-color": "#1ABC9C"}} # Verde FASICLIN
+    styles={"nav-link-selected": {"background-color": "#1ABC9C"}}, # Verde FASICLIN
+    key="filtro_unidade"
 )
 u_sel = df["UNIDADE"].unique() if u_sel_raw == "TODAS" else [u_sel_raw]
 
@@ -101,12 +111,13 @@ lista_semestres = get_options("SEMESTRE", "TODOS")
 s_sel_raw = option_menu(None, lista_semestres, 
     icons=['calendar'] + ['calendar-check']*(len(lista_semestres)-1), 
     menu_icon="cast", default_index=0, orientation="horizontal",
-    styles={"nav-link-selected": {"background-color": "#3498DB"}} # Azul Semestre
+    styles={"nav-link-selected": {"background-color": "#3498DB"}}, # Azul Semestre
+    key="filtro_semestre"
 )
 s_sel = df["SEMESTRE"].unique() if s_sel_raw == "TODOS" else [s_sel_raw]
 
-# Filtro final
-mask = (df["UNIDADE"].isin(u_sel)) & (df["CURSO"].isin(c_sel)) & (df["SEMESTRE"].isin(s_sel))
+# Filtro final (Incluindo a verificação de ANO)
+mask = (df["UNIDADE"].isin(u_sel)) & (df["CURSO"].isin(c_sel)) & (df["SEMESTRE"].isin(s_sel)) & (df["ANO"].isin(a_sel))
 df_filtered = df[mask]
 
 # ==========================================
@@ -149,4 +160,3 @@ with c2:
     fig_rank = px.bar(df_rank, x=col_valor, y="UNIDADE", orientation='h', 
                      text_auto='.2s', color_discrete_sequence=["#1ABC9C"])
     st.plotly_chart(style_fig(fig_rank), use_container_width=True)
-    
