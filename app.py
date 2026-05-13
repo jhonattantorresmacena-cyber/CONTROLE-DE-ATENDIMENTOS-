@@ -30,9 +30,21 @@ def load_data():
     # Padronização de colunas
     df.columns = [str(col).strip().upper() for col in df.columns]
     
-    # Tratando 'ANO' como string/categoria para evitar que seja somado por engano
+    # 1. Identificar dinamicamente a coluna de ANO para evitar KeyError
+    col_ano = None
     for col in df.columns:
-        if col in ['UNIDADE', 'CURSO', 'MÊS', 'SEMESTRE', 'ANO']:
+        if "ANO" in col: # Identifica "ANO" ou "ANOS"
+            col_ano = col
+            break
+            
+    # Se não encontrar coluna de ano, cria uma temporária baseada em data ou preenche com "N/A"
+    if not col_ano:
+        col_ano = "ANO"
+        df[col_ano] = "N/A"
+    
+    # Padronização das colunas de texto/categorias
+    for col in df.columns:
+        if col in ['UNIDADE', 'CURSO', 'MÊS', 'SEMESTRE', col_ano]:
             df[col] = df[col].astype(str).str.strip().str.upper()
 
     # Ordem cronológica dos meses
@@ -41,7 +53,7 @@ def load_data():
     if 'MÊS' in df.columns:
         df['MÊS'] = pd.Categorical(df['MÊS'], categories=ordem_meses, ordered=True)
             
-    # Localiza a coluna de valor (Quantidade de Procedimentos) descartando a coluna ANO
+    # Localiza a coluna de valor (Quantidade de Procedimentos) descartando colunas de ano
     target_col = None
     for col in df.columns:
         if "QUANTIDADE" in col and "ANO" not in col:
@@ -49,18 +61,17 @@ def load_data():
             break
     
     if not target_col:
-        # Pega a última coluna numérica que não seja explicitamente o ANO
         colunas_numericas = df.select_dtypes(include=['number']).columns
         colunas_filtradas = [c for c in colunas_numericas if "ANO" not in c]
         target_col = colunas_filtradas[-1] if colunas_filtradas else colunas_numericas[-1]
 
     df[target_col] = pd.to_numeric(df[target_col], errors='coerce').fillna(0)
-    return df, target_col
+    return df, target_col, col_ano
 
 try:
-    df, col_valor = load_data()
+    df, col_valor, col_ano = load_data()
 except Exception as e:
-    st.error(f"Erro crítico: {e}")
+    st.error(f"Erro crítico ao carregar dados: {e}")
     st.stop()
 
 # ==========================================
@@ -85,11 +96,15 @@ def get_options(column_name, default_label, reverse=False):
         return [default_label] + sorted(valores, reverse=reverse)
     return [default_label]
 
-# --- NOVO FILTRO: ANO ---
+# --- FILTRO: ANO (Dinâmico e Seguro) ---
 st.markdown('<p class="filter-label">📅 ANO DE REFERÊNCIA</p>', unsafe_allow_html=True)
-lista_anos = get_options("ANO", "TODOS OS ANOS", reverse=True) # Anos mais recentes primeiro
-a_sel_raw = st.selectbox("", lista_anos, key="filtro_ano", label_visibility="collapsed")
-a_sel = df["ANO"].unique() if a_sel_raw == "TODOS OS ANOS" else [a_sel_raw]
+if df[col_ano].iloc[0] == "N/A":
+    st.warning("⚠️ Atenção: Nenhuma coluna de 'ANO' foi identificada na sua planilha do Google Sheets.")
+    a_sel = df[col_ano].unique()
+else:
+    lista_anos = get_options(col_ano, "TODOS OS ANOS", reverse=True)
+    a_sel_raw = st.selectbox("", lista_anos, key="filtro_ano", label_visibility="collapsed")
+    a_sel = df[col_ano].unique() if a_sel_raw == "TODOS OS ANOS" else [a_sel_raw]
 
 st.markdown('<p class="filter-label">🎯 PROCEDIMENTO / CURSO</p>', unsafe_allow_html=True)
 lista_cursos = get_options("CURSO", "TODOS OS CURSOS")
@@ -116,7 +131,7 @@ s_sel_raw = option_menu(None, lista_semestres,
 )
 s_sel = df["SEMESTRE"].unique() if s_sel_raw == "TODOS" else [s_sel_raw]
 
-# Filtro final (Incluindo a verificação de ANO)
+# Filtro final (Usando a coluna de ano dinâmica)
 mask = (df["UNIDADE"].isin(u_sel)) & (df["CURSO"].isin(c_sel)) & (df["SEMESTRE"].isin(s_sel)) & (df["ANO"].isin(a_sel))
 df_filtered = df[mask]
 
