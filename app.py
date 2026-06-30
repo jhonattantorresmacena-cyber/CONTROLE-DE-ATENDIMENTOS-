@@ -19,29 +19,27 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Identificação da Planilha Atualizada e GIDs
+# 2. Identificação da Planilha Atualizada e GIDs correspondentes
 SHEET_ID = "1slAr_6YDKRKBqsZK4G6JguD47FD8dz3Oa-9OD8hCYyE"
 ABAS_CONFIG = {
     "SINOP": "1049389082",
-    "SORRISO": "608902302",       # Atualize esses GIDs se mudaram na nova planilha
-    "CUIABA": "1444156369",        # Atualize esses GIDs se mudaram na nova planilha
-    "RONDONOPOLIS": "1726640375",   # Atualize esses GIDs se mudaram na nova planilha
-    "PRIMAVERA": "470975982"      # Atualize esses GIDs se mudaram na nova planilha
+    "SORRISO": "1415012993",       
+    "CUIABA": "1565006717",        
+    "RONDONOPOLIS": "426551434",   
+    "PRIMAVERA": "1535754805"      
 }
 
-@st.cache_data(ttl=60)  # Mantem o cache por 1 minuto
+@st.cache_data(ttl=60)  # Mantém o cache por 1 minuto
 def load_all_data():
     lista_dfs = []
-    # Cria um número que muda a cada minuto baseado no timestamp atual
     cache_buster = int(time.time() // 60) 
     
     for nome_aba, gid in ABAS_CONFIG.items():
         try:
-            # URL formatada para exportação em CSV com o novo SHEET_ID e quebra de cache
             url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}&cb={cache_buster}"
             df_temp = pd.read_csv(url)
             
-            # Limpeza de colunas
+            # Limpeza de colunas para evitar erros de espaço ou quebra de linha
             df_temp.columns = [
                 str(c).replace('\n', ' ').replace('\r', ' ').strip().upper() 
                 for c in df_temp.columns
@@ -58,32 +56,38 @@ def load_all_data():
 df_raw = load_all_data()
 
 if not df_raw.empty:
-    # Mapeamento de Colunas (Trata erro de digitação 'QUANTIDE' do original)
-    def buscar_col(lista, termos):
-        for c in lista:
-            if all(t in c for t in termos): return c
-        return None
-
-    COL_META = buscar_col(df_raw.columns, ["QUANTID", "SEMESTRE"])
+    # Definição exata das colunas com base na imagem recebida
+    COL_META = "QUANTIDADE DE"
     COL_CLINICA = "CLINICA"
+    COL_ANO = "ANO LETIVO"
     MESES = ["FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO"]
 
-    # Garantir formato numérico
-    for c in [COL_META] + MESES:
+    # Garantir formato numérico nas colunas de valores e metas
+    colunas_numericas = [COL_META] + MESES
+    for c in colunas_numericas:
         if c in df_raw.columns:
             df_raw[c] = pd.to_numeric(df_raw[c], errors='coerce').fillna(0)
 
     # --- INTERFACE ---
     st.title("🏥 FASICLIN - Dashboard de Produtividade")
 
-    # Filtros
-    col_u, col_c = st.columns(2)
+    # Filtros na parte superior (Unidade, Ano Letivo e Clínica)
+    col_u, col_a, col_c = st.columns(3)
+    
     with col_u:
-        unidade_sel = st.selectbox("Unidade", list(ABAS_CONFIG.keys()))
+        unidade_sel = st.selectbox("Selecione a Unidade", list(ABAS_CONFIG.keys()))
     
     df_filtrado = df_raw.copy()
     if unidade_sel != "TODAS":
         df_filtrado = df_filtrado[df_filtrado['UNIDADE_NOME'] == unidade_sel]
+
+    with col_a:
+        # Identifica dinamicamente os anos disponíveis na planilha (ex: 2025/1, 2026/1)
+        anos_disponiveis = sorted(df_filtrado[COL_ANO].dropna().unique().tolist(), reverse=True)
+        ano_sel = st.selectbox("Ano Letivo", anos_disponiveis)
+        
+    if ano_sel:
+        df_filtrado = df_filtrado[df_filtrado[COL_ANO] == ano_sel]
 
     with col_c:
         clinicas_disponiveis = ["TODAS"] + sorted(df_filtrado[COL_CLINICA].dropna().unique().tolist())
@@ -92,13 +96,13 @@ if not df_raw.empty:
     if clinica_sel != "TODAS":
         df_filtrado = df_filtrado[df_filtrado[COL_CLINICA] == clinica_sel]
 
-    # --- LÓGICA ALTERADA: CÁLCULOS DINÂMICOS DE MESES ATIVOS ---
+    # --- CÁLCULOS DINÂMICOS ---
     total_meta = df_filtrado[COL_META].sum()
     total_realizado = df_filtrado[MESES].sum().sum()
     falta = max(0, total_meta - total_realizado)
     perc_total = (total_realizado / total_meta * 100) if total_meta > 0 else 0
 
-    # Descobrir quantos meses já têm dados inseridos
+    # Descobrir quantos meses já têm dados inseridos maiores que zero
     soma_por_mes = df_filtrado[MESES].sum()
     meses_com_dados = sum(soma_por_mes > 0)
     
@@ -112,10 +116,10 @@ if not df_raw.empty:
 
     # Banner de Acompanhamento
     if falta > 0:
-        st.info(f"**Acompanhamento de Metas:** Faltam **{falta:.0f}** procedimentos para atingir a meta total. "
+        st.info(f"**Acompanhamento de Metas ({ano_sel}):** Faltam **{falta:.0f}** procedimentos para atingir a meta total. "
                 f"Considerando os meses restantes ({meses_restantes}), a média necessária é de **{media_necessaria_mes}** procedimentos/mês.")
     else:
-        st.success(f"🎉 **Parabéns!** A meta de {total_meta:.0f} atendimentos foi atingida ou superada! (Realizado: {total_realizado:.0f})")
+        st.success(f"🎉 **Parabéns!** A meta de {total_meta:.0f} atendimentos para {ano_sel} foi atingida ou superada! (Realizado: {total_realizado:.0f})")
 
     # Gráficos
     c_donut, c_bar = st.columns([1, 2])
@@ -157,4 +161,4 @@ if not df_raw.empty:
                 st.caption(f"Meta: {int(row[COL_META])}")
                 st.markdown("---")
 else:
-    st.warning("Nenhum dado encontrado. Verifique se a planilha está compartilhada corretamente.")
+    st.warning("Nenhum dado encontrado. Verifique se a planilha está compartilhada como 'Qualquer pessoa com o link'.")
