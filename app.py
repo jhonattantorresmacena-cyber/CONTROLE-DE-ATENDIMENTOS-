@@ -19,18 +19,22 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
+# Lista global com a ordem cronológica exata dos meses
+ORDEM_MESES = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", 
+               "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"]
+
 # ==========================================
-# 2. CARREGAMENTO E PADRONIZAÇÃO DOS DADOS (API)
+# 2. CARREGAMENTO E PADRONIZAÇÃO DOS DADOS
 # ==========================================
 @st.cache_data(ttl=600)
 def load_data():
     URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpHTm4l6jKCsZTLaSJjDZn-TYdaoxla54U9hhkJLdBe_HC5QNrWleCaLkq7_UglTMXP-muYt4hNKAI/pub?output=csv"
     df = pd.read_csv(f"{URL}&refresh={time.time()}")
     
-    # 2.1 Padronização dos nomes das colunas (Sempre em Maiúsculo)
+    # Padronização dos nomes das colunas (Sempre em Maiúsculo)
     df.columns = [str(col).strip().upper() for col in df.columns]
     
-    # 2.2 Localização dinâmica da coluna de ANO para evitar quebras por variação de nome
+    # Localização dinâmica da coluna de ANO
     col_ano = None
     for col in df.columns:
         if "ANO" in col:
@@ -41,18 +45,16 @@ def load_data():
         col_ano = "ANO"
         df[col_ano] = "N/A"
     
-    # 2.3 Tratamento de strings e preenchimento de vazios
+    # Tratamento de strings e preenchimento de vazios
     for col in df.columns:
         if col in ['UNIDADE', 'CURSO', 'MÊS', 'SEMESTRE', col_ano]:
             df[col] = df[col].astype(str).str.strip().str.upper()
 
-    # 2.4 Ordenação lógica e categórica dos meses do ano
-    ordem_meses = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", 
-                   "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"]
+    # Ordenação categórica dos meses do ano
     if 'MÊS' in df.columns:
-        df['MÊS'] = pd.Categorical(df['MÊS'], categories=ordem_meses, ordered=True)
+        df['MÊS'] = pd.Categorical(df['MÊS'], categories=ORDEM_MESES, ordered=True)
             
-    # 2.5 Identificação dinâmica e conversão da coluna de valores numéricos
+    # Identificação dinâmica da coluna de valores numéricos
     target_col = None
     for col in df.columns:
         if "QUANTIDADE" in col and "ANO" not in col:
@@ -66,7 +68,7 @@ def load_data():
 
     df[target_col] = pd.to_numeric(df[target_col], errors='coerce').fillna(0)
     
-    # Define por padrão que toda informação extraída diretamente da planilha é um dado de execução real
+    # Define por padrão que toda informação extraída diretamente da planilha é REALIZADO
     df["TIPO"] = "REALIZADO"
     
     return df, target_col, col_ano
@@ -82,7 +84,7 @@ def injetar_metas_projetadas(df, col_valor, col_ano, taxa_crescimento=0.10):
     """
     df[col_ano] = df[col_ano].astype(str).str.strip()
     
-    # Filtra e agrupa apenas com base nos registros que já aconteceram
+    # Filtra e agrupa apenas com base nos registros realizados
     df_historico = df[df["TIPO"] == "REALIZADO"]
     
     base_metas = df_historico.groupby(["UNIDADE", "CURSO", "MÊS", "SEMESTRE"], observed=False)[col_valor].mean().reset_index()
@@ -90,7 +92,7 @@ def injetar_metas_projetadas(df, col_valor, col_ano, taxa_crescimento=0.10):
     
     novas_linhas = []
     
-    # Geração dos cenários futuros aplicando juros compostos de crescimento
+    # Geração dos cenários futuros aplicando crescimento composto
     for ano_proj in ["2025", "2026"]:
         multiplicador = (1 + taxa_crescimento) if ano_proj == "2025" else (1 + taxa_crescimento) ** 2
         
@@ -110,6 +112,8 @@ def injetar_metas_projetadas(df, col_valor, col_ano, taxa_crescimento=0.10):
             
     if novas_linhas:
         df_metas = pd.DataFrame(novas_linhas)
+        # Mantém o tipo categórico intacto após a concatenação
+        df_metas['MÊS'] = pd.Categorical(df_metas['MÊS'], categories=ORDEM_MESES, ordered=True)
         df = pd.concat([df, df_metas], ignore_index=True)
         
     return df
@@ -118,7 +122,6 @@ def injetar_metas_projetadas(df, col_valor, col_ano, taxa_crescimento=0.10):
 # Inicialização segura do pipeline de dados
 try:
     df, col_valor, col_ano = load_data()
-    # Adiciona as metas calculadas à base com o crescimento estabelecido
     df = injetar_metas_projetadas(df, col_valor, col_ano, taxa_crescimento=0.10)
 except Exception as e:
     st.error(f"Erro de processamento no Pipeline de Dados: {e}")
@@ -126,7 +129,7 @@ except Exception as e:
 
 
 # ==========================================
-# 4. DESIGN DO CABEÇALHO SINCRO
+# 4. DESIGN DO CABEÇALHO
 # ==========================================
 col_logo, col_sync = st.columns([8, 2])
 with col_logo:
@@ -191,7 +194,7 @@ s_sel_raw = option_menu(None, lista_semestres,
 )
 s_sel = df["SEMESTRE"].unique() if s_sel_raw == "TODOS" else [s_sel_raw]
 
-# Aplicação da máscara de filtros unificada
+# Aplicação da máscara de filtros
 mask = (df["UNIDADE"].isin(u_sel)) & (df["CURSO"].isin(c_sel)) & (df["SEMESTRE"].isin(s_sel)) & (df[col_ano].isin(a_sel))
 df_filtered = df[mask]
 
@@ -202,7 +205,6 @@ df_filtered = df[mask]
 st.markdown("<br>", unsafe_allow_html=True)
 k1, k2, k3 = st.columns(3)
 
-# Filtro interno para exibir apenas dados reais consolidados nos indicadores analíticos
 total_realizado = int(df_filtered[df_filtered["TIPO"] == "REALIZADO"][col_valor].sum())
 
 with k1: 
@@ -214,7 +216,6 @@ with k3:
 
 
 def style_fig(fig):
-    """Aplica o tema visual transparente e limpo nos gráficos do Plotly."""
     fig.update_layout(
         plot_bgcolor="rgba(0,0,0,0)", 
         paper_bgcolor="rgba(0,0,0,0)", 
@@ -225,19 +226,23 @@ def style_fig(fig):
     return fig
 
 
-# 6.1 Painel Principal: Comparativo Realizado vs Meta por Mês
+# 6.1 Painel Principal: Comparativo Realizado vs Meta por Mês (COM ORDENAÇÃO CORRIGIDA)
 st.markdown('<p class="filter-label">📊 COMPARATIVO ANUAL: REALIZADO VS META EM ATENDIMENTOS</p>', unsafe_allow_html=True)
+
+# Agrupando e explicitando que queremos manter a ordenação categórica observada
 df_comp = df_filtered.groupby(["MÊS", "TIPO"], observed=False)[col_valor].sum().reset_index()
 
+# CORREÇÃO CRÍTICA: Passando o parâmetro category_orders para o Plotly fixar a ordem cronológica no eixo X
 fig_bar_comp = px.bar(
     df_comp, x="MÊS", y=col_valor, color="TIPO", barmode="group",
     color_discrete_map={"REALIZADO": "#1ABC9C", "META": "#34495E"},
+    category_orders={"MÊS": ORDEM_MESES},
     text_auto='.2s'
 )
 st.plotly_chart(style_fig(fig_bar_comp), use_container_width=True)
 
 
-# Painel Secundário dividido em colunas balanceadas
+# Painel Secundário
 c1, c2 = st.columns(2)
 
 with c1:
