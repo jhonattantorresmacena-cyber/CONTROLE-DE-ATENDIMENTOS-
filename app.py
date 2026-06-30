@@ -23,10 +23,10 @@ st.markdown("""
 SHEET_ID = "1slAr_6YDKRKBqsZK4G6JguD47FD8dz3Oa-9OD8hCYyE"
 ABAS_CONFIG = {
     "SINOP": "1049389082",
-    "SORRISO": "1415012993",       
-    "CUIABA": "1565006717",        
-    "RONDONOPOLIS": "426551434",   
-    "PRIMAVERA": "1535754805"      
+    "SORRISO": "608902302",       
+    "CUIABA": "1444156369",        
+    "RONDONOPOLIS": "1726640375",   
+    "PRIMAVERA": "470975982"      
 }
 
 @st.cache_data(ttl=60)  # Mantém o cache por 1 minuto
