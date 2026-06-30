@@ -158,9 +158,6 @@ u_sel_raw = option_menu(None, lista_unidades,
     styles={"nav-link-selected": {"background-color": "#1ABC9C"}}, 
     key="filtro_unidade"
 )
-u_sel = df["UNIDADE"].unique() if u_raw == "TODAS" else [u_sel_raw] if 'u_sel_raw' in locals() else (df["UNIDADE"].unique() if u_sel_raw == "TODAS" else [u_sel_raw])
-
-# Para garantir a segurança total contra o corte da linha, use esta versão limpa:
 u_sel = df["UNIDADE"].unique() if u_sel_raw == "TODAS" else [u_sel_raw]
 
 # --- FILTRO: ANO ---
