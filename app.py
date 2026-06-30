@@ -147,4 +147,48 @@ def get_options(column_name, default_label, reverse=False):
 st.markdown('<p class="filter-label">🎯 PROCEDIMENTO / CURSO</p>', unsafe_allow_html=True)
 lista_cursos = get_options("CURSO", "TODOS OS CURSOS")
 c_sel_raw = st.selectbox("", lista_cursos, key="filtro_curso", label_visibility="collapsed")
-c_sel = df["CURSO"].unique() if c_sel_raw == "TODOS OS CURSOS" else
+c_sel = df["CURSO"].unique() if c_sel_raw == "TODOS OS CURSOS" else [c_sel_raw]
+
+# --- FILTRO: UNIDADES ---
+st.markdown('<p class="filter-label">📍 UNIDADES</p>', unsafe_allow_html=True)
+lista_unidades = get_options("UNIDADE", "TODAS")
+u_sel_raw = option_menu(None, lista_unidades, 
+    icons=['house'] + ['geo-alt']*(len(lista_unidades)-1), 
+    menu_icon="cast", default_index=0, orientation="horizontal",
+    styles={"nav-link-selected": {"background-color": "#1ABC9C"}}, 
+    key="filtro_unidade"
+)
+u_sel = df["UNIDADE"].unique() if u_raw == "TODAS" else [u_sel_raw] if 'u_sel_raw' in locals() else (df["UNIDADE"].unique() if u_sel_raw == "TODAS" else [u_sel_raw])
+
+# Para garantir a segurança total contra o corte da linha, use esta versão limpa:
+u_sel = df["UNIDADE"].unique() if u_sel_raw == "TODAS" else [u_sel_raw]
+
+# --- FILTRO: ANO ---
+st.markdown('<p class="filter-label">📅 ANO DE REFERÊNCIA</p>', unsafe_allow_html=True)
+if df[col_ano].iloc[0] == "N/A":
+    st.warning("⚠️ Atenção: Nenhuma coluna de 'ANO' foi identificada.")
+    a_sel = df[col_ano].unique()
+else:
+    lista_anos = get_options(col_ano, "TODOS OS ANOS", reverse=False)
+    a_sel_raw = option_menu(None, lista_anos, 
+        icons=['calendar4-range'] + ['calendar3']*(len(lista_anos)-1), 
+        menu_icon="cast", default_index=0, orientation="horizontal",
+        styles={"nav-link-selected": {"background-color": "#2C3E50"}}, 
+        key="filtro_ano"
+    )
+    a_sel = df[col_ano].unique() if a_sel_raw == "TODOS OS ANOS" else [a_sel_raw]
+
+# --- FILTRO: SEMESTRE ---
+st.markdown('<p class="filter-label">📅 SEMESTRE</p>', unsafe_allow_html=True)
+lista_semestres = get_options("SEMESTRE", "TODOS")
+s_sel_raw = option_menu(None, lista_semestres, 
+    icons=['calendar'] + ['calendar-check']*(len(lista_semestres)-1), 
+    menu_icon="cast", default_index=0, orientation="horizontal",
+    styles={"nav-link-selected": {"background-color": "#3498DB"}}, 
+    key="filtro_semestre"
+)
+s_sel = df["SEMESTRE"].unique() if s_sel_raw == "TODOS" else [s_sel_raw]
+
+# Filtro final aplicado ao DataFrame
+mask = (df["UNIDADE"].isin(u_sel)) & (df["CURSO"].isin(c_sel)) & (df["SEMESTRE"].isin(s_sel)) & (df[col_ano].isin(a_sel))
+df_filtered = df[mask]
