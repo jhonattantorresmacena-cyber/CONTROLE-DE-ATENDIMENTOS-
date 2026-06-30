@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import time
 
 # 1. Configuração da Página
 st.set_page_config(page_title="FASICLIN - Dashboard Premium", layout="wide")
@@ -18,28 +19,25 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# 2. Identificação da Planilha e GIDs fornecidos
-SHEET_ID = "1yoPVCN4NRVC1ytEEuG5Tqb30ZGjiLHLG"
+# 2. Identificação da Planilha Atualizada e GIDs
+SHEET_ID = "1slAr_6YDKRKBqsZK4G6JguD47FD8dz3Oa-9OD8hCYyE"
 ABAS_CONFIG = {
-    "SINOP": "1205707816",
-    "SORRISO": "1415012993",
-    "CUIABA": "1565006717",
-    "RONDONOPOLIS": "426551434",
-    "PRIMAVERA": "1535754805"
+    "SINOP": "1049389082",
+    "SORRISO": "608902302",       # Atualize esses GIDs se mudaram na nova planilha
+    "CUIABA": "1444156369",        # Atualize esses GIDs se mudaram na nova planilha
+    "RONDONOPOLIS": "1726640375",   # Atualize esses GIDs se mudaram na nova planilha
+    "PRIMAVERA": "470975982"      # Atualize esses GIDs se mudaram na nova planilha
 }
 
-import time  # Certifique-se de importar o módulo time no topo do arquivo
-
-@st.cache_data(ttl=60)  # Mantém o cache por 1 minuto para não estourar o limite de requisições
+@st.cache_data(ttl=60)  # Mantem o cache por 1 minuto
 def load_all_data():
     lista_dfs = []
-    # Criamos um número que muda a cada minuto baseado no timestamp atual
-    # Isso engana o cache e força o download do dado novo
+    # Cria um número que muda a cada minuto baseado no timestamp atual
     cache_buster = int(time.time() // 60) 
     
     for nome_aba, gid in ABAS_CONFIG.items():
         try:
-            # Adicionamos o &cb= no final da URL para quebrar o cache do Google
+            # URL formatada para exportação em CSV com o novo SHEET_ID e quebra de cache
             url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid={gid}&cb={cache_buster}"
             df_temp = pd.read_csv(url)
             
@@ -100,22 +98,19 @@ if not df_raw.empty:
     falta = max(0, total_meta - total_realizado)
     perc_total = (total_realizado / total_meta * 100) if total_meta > 0 else 0
 
-    # Descobrir quantos meses já têm dados inseridos (valores maiores que zero)
-    # Somamos os valores de cada mês no dataframe filtrado para ver quais estão ativos
+    # Descobrir quantos meses já têm dados inseridos
     soma_por_mes = df_filtrado[MESES].sum()
-    meses_com_dados = info_meses_ativos = sum(soma_por_mes > 0)
+    meses_com_dados = sum(soma_por_mes > 0)
     
-    # Total de meses planejados no sistema (neste caso, 3: Fev, Mar, Abr)
     total_meses_periodo = len(MESES)
     meses_restantes = max(1, total_meses_periodo - meses_com_dados)
 
-    # Se a meta já foi batida, os meses restantes não importam para o cálculo da média
     if falta > 0:
         media_necessaria_mes = int(falta / meses_restantes)
     else:
         media_necessaria_mes = 0
 
-    # Banner de Acompanhamento Ajustado Dinamicamente
+    # Banner de Acompanhamento
     if falta > 0:
         st.info(f"**Acompanhamento de Metas:** Faltam **{falta:.0f}** procedimentos para atingir a meta total. "
                 f"Considerando os meses restantes ({meses_restantes}), a média necessária é de **{media_necessaria_mes}** procedimentos/mês.")
