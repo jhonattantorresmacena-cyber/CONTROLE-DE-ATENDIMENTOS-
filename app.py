@@ -5,7 +5,7 @@ import time
 from streamlit_option_menu import option_menu
 
 # ==========================================
-# 1. CONFIGURAÇÃO E ESTILIZAÇÃO
+# 1. CONFIGURAÇÃO DA PÁGINA E ESTILIZAÇÃO CSS
 # ==========================================
 st.set_page_config(page_title="Dashboard FASICLIN", layout="wide", page_icon="🏥")
 
@@ -20,17 +20,17 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. CARREGAMENTO E TRATAMENTO DE DADOS
+# 2. CARREGAMENTO E PADRONIZAÇÃO DOS DADOS (API)
 # ==========================================
 @st.cache_data(ttl=600)
 def load_data():
     URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpHTm4l6jKCsZTLaSJjDZn-TYdaoxla54U9hhkJLdBe_HC5QNrWleCaLkq7_UglTMXP-muYt4hNKAI/pub?output=csv"
     df = pd.read_csv(f"{URL}&refresh={time.time()}")
     
-    # Padronização de colunas
+    # 2.1 Padronização dos nomes das colunas (Sempre em Maiúsculo)
     df.columns = [str(col).strip().upper() for col in df.columns]
     
-    # Identificar dinamicamente a coluna de ANO para evitar KeyError
+    # 2.2 Localização dinâmica da coluna de ANO para evitar quebras por variação de nome
     col_ano = None
     for col in df.columns:
         if "ANO" in col:
@@ -41,18 +41,18 @@ def load_data():
         col_ano = "ANO"
         df[col_ano] = "N/A"
     
-    # Padronização das colunas de texto/categorias
+    # 2.3 Tratamento de strings e preenchimento de vazios
     for col in df.columns:
         if col in ['UNIDADE', 'CURSO', 'MÊS', 'SEMESTRE', col_ano]:
             df[col] = df[col].astype(str).str.strip().str.upper()
 
-    # Ordem cronológica dos meses
+    # 2.4 Ordenação lógica e categórica dos meses do ano
     ordem_meses = ["JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", 
                    "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"]
     if 'MÊS' in df.columns:
         df['MÊS'] = pd.Categorical(df['MÊS'], categories=ordem_meses, ordered=True)
             
-    # Localiza a coluna de valor (Quantidade de Procedimentos)
+    # 2.5 Identificação dinâmica e conversão da coluna de valores numéricos
     target_col = None
     for col in df.columns:
         if "QUANTIDADE" in col and "ANO" not in col:
@@ -66,22 +66,23 @@ def load_data():
 
     df[target_col] = pd.to_numeric(df[target_col], errors='coerce').fillna(0)
     
-    # Adiciona a coluna TIPO como REALIZADO para os dados vindos da planilha
+    # Define por padrão que toda informação extraída diretamente da planilha é um dado de execução real
     df["TIPO"] = "REALIZADO"
     
     return df, target_col, col_ano
 
 
 # ==========================================
-# 3. CÁLCULO E INJEÇÃO AUTOMÁTICA DE METAS (2025/2026)
+# 3. MOTOR DE INTELIGÊNCIA: PROJEÇÃO DE METAS
 # ==========================================
 def injetar_metas_projetadas(df, col_valor, col_ano, taxa_crescimento=0.10):
     """
-    Calcula a média histórica e projeta as linhas de METAS para 2025 e 2026
+    Agrupa o histórico de atendimentos reais por Unidade, Curso e Mês e
+    gera projeções automáticas de metas para os anos de 2025 e 2026.
     """
     df[col_ano] = df[col_ano].astype(str).str.strip()
     
-    # Filtra apenas o histórico real para servir de base
+    # Filtra e agrupa apenas com base nos registros que já aconteceram
     df_historico = df[df["TIPO"] == "REALIZADO"]
     
     base_metas = df_historico.groupby(["UNIDADE", "CURSO", "MÊS", "SEMESTRE"], observed=False)[col_valor].mean().reset_index()
@@ -89,6 +90,7 @@ def injetar_metas_projetadas(df, col_valor, col_ano, taxa_crescimento=0.10):
     
     novas_linhas = []
     
+    # Geração dos cenários futuros aplicando juros compostos de crescimento
     for ano_proj in ["2025", "2026"]:
         multiplicador = (1 + taxa_crescimento) if ano_proj == "2025" else (1 + taxa_crescimento) ** 2
         
@@ -102,7 +104,7 @@ def injetar_metas_projetadas(df, col_valor, col_ano, taxa_crescimento=0.10):
                 "SEMESTRE": row["SEMESTRE"],
                 col_ano: ano_proj,
                 col_valor: meta_calculada,
-                "TIPO": "META"  # Definido explicitamente como META
+                "TIPO": "META"
             }
             novas_linhas.append(nova_linha)
             
@@ -113,16 +115,18 @@ def injetar_metas_projetadas(df, col_valor, col_ano, taxa_crescimento=0.10):
     return df
 
 
-# Execução do carregamento e projeção de metas
+# Inicialização segura do pipeline de dados
 try:
     df, col_valor, col_ano = load_data()
+    # Adiciona as metas calculadas à base com o crescimento estabelecido
     df = injetar_metas_projetadas(df, col_valor, col_ano, taxa_crescimento=0.10)
 except Exception as e:
-    st.error(f"Erro crítico ao carregar e projetar dados: {e}")
+    st.error(f"Erro de processamento no Pipeline de Dados: {e}")
     st.stop()
 
+
 # ==========================================
-# 4. CABEÇALHO
+# 4. DESIGN DO CABEÇALHO SINCRO
 # ==========================================
 col_logo, col_sync = st.columns([8, 2])
 with col_logo:
@@ -134,8 +138,9 @@ with col_logo:
 with col_sync:
     st.markdown(f"<div style='text-align: right; color: #7F8C8D; padding-top:10px;'><b>{time.strftime('%d/%m/%Y %H:%M')}</b></div>", unsafe_allow_html=True)
 
+
 # ==========================================
-# 5. FILTROS
+# 5. INTERFACE DO USUÁRIO: COMPONENTES E FILTROS
 # ==========================================
 def get_options(column_name, default_label, reverse=False):
     if column_name in df.columns:
@@ -143,13 +148,13 @@ def get_options(column_name, default_label, reverse=False):
         return [default_label] + sorted(valores, reverse=reverse)
     return [default_label]
 
-# --- FILTRO: CURSO ---
+# --- Filtro 01: Procedimento / Curso ---
 st.markdown('<p class="filter-label">🎯 PROCEDIMENTO / CURSO</p>', unsafe_allow_html=True)
 lista_cursos = get_options("CURSO", "TODOS OS CURSOS")
 c_sel_raw = st.selectbox("", lista_cursos, key="filtro_curso", label_visibility="collapsed")
 c_sel = df["CURSO"].unique() if c_sel_raw == "TODOS OS CURSOS" else [c_sel_raw]
 
-# --- FILTRO: UNIDADES ---
+# --- Filtro 02: Menu de Unidades ---
 st.markdown('<p class="filter-label">📍 UNIDADES</p>', unsafe_allow_html=True)
 lista_unidades = get_options("UNIDADE", "TODAS")
 u_sel_raw = option_menu(None, lista_unidades, 
@@ -160,10 +165,10 @@ u_sel_raw = option_menu(None, lista_unidades,
 )
 u_sel = df["UNIDADE"].unique() if u_sel_raw == "TODAS" else [u_sel_raw]
 
-# --- FILTRO: ANO ---
+# --- Filtro 03: Menu de Anos ---
 st.markdown('<p class="filter-label">📅 ANO DE REFERÊNCIA</p>', unsafe_allow_html=True)
 if df[col_ano].iloc[0] == "N/A":
-    st.warning("⚠️ Atenção: Nenhuma coluna de 'ANO' foi identificada.")
+    st.warning("⚠️ Nenhuma coluna de 'ANO' localizada nos dados originais.")
     a_sel = df[col_ano].unique()
 else:
     lista_anos = get_options(col_ano, "TODOS OS ANOS", reverse=False)
@@ -175,7 +180,7 @@ else:
     )
     a_sel = df[col_ano].unique() if a_sel_raw == "TODOS OS ANOS" else [a_sel_raw]
 
-# --- FILTRO: SEMESTRE ---
+# --- Filtro 04: Menu de Semestres ---
 st.markdown('<p class="filter-label">📅 SEMESTRE</p>', unsafe_allow_html=True)
 lista_semestres = get_options("SEMESTRE", "TODOS")
 s_sel_raw = option_menu(None, lista_semestres, 
@@ -186,6 +191,71 @@ s_sel_raw = option_menu(None, lista_semestres,
 )
 s_sel = df["SEMESTRE"].unique() if s_sel_raw == "TODOS" else [s_sel_raw]
 
-# Filtro final aplicado ao DataFrame
+# Aplicação da máscara de filtros unificada
 mask = (df["UNIDADE"].isin(u_sel)) & (df["CURSO"].isin(c_sel)) & (df["SEMESTRE"].isin(s_sel)) & (df[col_ano].isin(a_sel))
 df_filtered = df[mask]
+
+
+# ==========================================
+# 6. CENTRAL DE MÉTRICAS (KPIs) & GRÁFICOS
+# ==========================================
+st.markdown("<br>", unsafe_allow_html=True)
+k1, k2, k3 = st.columns(3)
+
+# Filtro interno para exibir apenas dados reais consolidados nos indicadores analíticos
+total_realizado = int(df_filtered[df_filtered["TIPO"] == "REALIZADO"][col_valor].sum())
+
+with k1: 
+    st.metric("Total Realizado", f"{total_realizado:,}".replace(",", "."))
+with k2: 
+    st.metric("Cursos Ativos", len(df_filtered["CURSO"].unique()))
+with k3: 
+    st.metric("Média por Unidade (Real)", f"{int(total_realizado/len(u_sel)) if len(u_sel)>0 else 0}")
+
+
+def style_fig(fig):
+    """Aplica o tema visual transparente e limpo nos gráficos do Plotly."""
+    fig.update_layout(
+        plot_bgcolor="rgba(0,0,0,0)", 
+        paper_bgcolor="rgba(0,0,0,0)", 
+        margin=dict(l=10, r=10, t=30, b=10),
+        xaxis=dict(showgrid=False),
+        yaxis=dict(gridcolor="#EEE")
+    )
+    return fig
+
+
+# 6.1 Painel Principal: Comparativo Realizado vs Meta por Mês
+st.markdown('<p class="filter-label">📊 COMPARATIVO ANUAL: REALIZADO VS META EM ATENDIMENTOS</p>', unsafe_allow_html=True)
+df_comp = df_filtered.groupby(["MÊS", "TIPO"], observed=False)[col_valor].sum().reset_index()
+
+fig_bar_comp = px.bar(
+    df_comp, x="MÊS", y=col_valor, color="TIPO", barmode="group",
+    color_discrete_map={"REALIZADO": "#1ABC9C", "META": "#34495E"},
+    text_auto='.2s'
+)
+st.plotly_chart(style_fig(fig_bar_comp), use_container_width=True)
+
+
+# Painel Secundário dividido em colunas balanceadas
+c1, c2 = st.columns(2)
+
+with c1:
+    st.markdown('<p class="filter-label">🍩 DISTRIBUIÇÃO VOLUMÉTRICA POR CURSO (REALIZADO)</p>', unsafe_allow_html=True)
+    df_pie_data = df_filtered[df_filtered["TIPO"] == "REALIZADO"]
+    fig_pie = px.pie(
+        df_pie_data, values=col_valor, names="CURSO", hole=0.5,
+        color_discrete_sequence=px.colors.qualitative.Pastel
+    )
+    st.plotly_chart(style_fig(fig_pie), use_container_width=True)
+
+with c2:
+    st.markdown('<p class="filter-label">🏆 RANKING PERFORMANCE: UNIDADES (REALIZADO)</p>', unsafe_allow_html=True)
+    df_rank_data = df_filtered[df_filtered["TIPO"] == "REALIZADO"]
+    df_rank = df_rank_data.groupby("UNIDADE")[col_valor].sum().reset_index().sort_values(col_valor, ascending=True)
+    
+    fig_rank = px.bar(
+        df_rank, x=col_valor, y="UNIDADE", orientation='h', 
+        text_auto='.2s', color_discrete_sequence=["#1ABC9C"]
+    )
+    st.plotly_chart(style_fig(fig_rank), use_container_width=True)
