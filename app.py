@@ -197,18 +197,7 @@ if not df_raw.empty:
                 <span style="color:gray; font-size:12px;">Aproveitamento da meta</span>
             </div>
         """, unsafe_allow_html=True)
-        
-    with kpi4:
-        st.markdown(f"""
-            <div class="kpi-container" style="border-left-color: #ff9800;">
-                <b>📅 MÉDIA MENSAL REQUERIDA</b>
-                <h2>{media_necessaria_mes:,.0f}</h2>
-                <span style="color:gray; font-size:12px;">Próximos {meses_restantes} meses</span>
-            </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
+  
     # --- BLOCO: COMPARATIVO ENTRE ANOS LETIVOS ---
     st.markdown('<h3 style="color:#004a87;">📊 Comparativo Histórico de Realizados entre Anos Letivos</h3>', unsafe_allow_html=True)
     
