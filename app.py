@@ -168,12 +168,41 @@ if not df_raw.empty:
 
     st.markdown("---")
 
-    # --- BLOCO DE METRICAS / KPIS COM O CRESCIMENTO ENGENHARADO ---
+  # --- BLOCO DE METRICAS / KPIS COM O CRESCIMENTO ENGENHARADO ---
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     with kpi1:
-        st.markdown(f'<div class="kpi-container"><b>🎯 META SEMESTRAL ({ano_sel})</b><h2>{total_meta:,.0f}</h2><span style="color:gray; font-size:12px;">Procedimentos planejados</span></div>', unsafe_allow_html=True)
+        st.markdown(f"""
+            <div class="kpi-container">
+                <b>🎯 META SEMESTRAL ({ano_sel})</b>
+                <h2>{total_meta:,.0f}</h2>
+                <span style="color:gray; font-size:12px;">Procedimentos planejados</span>
+            </div>
+        """, unsafe_allow_html=True)
+        
     with kpi2:
-        st.markdown(f'<div class="kpi-container" style="border-left-color: #299947;"><b>✅ REALIZADO ({ano_sel})</b><h2>{total_realizado:,.0f}</h2>{texto_crescimento}</div>', unsafe_allow_html=True)
+        st.markdown(f"""
+            <div class="kpi-container" style="border-left-color: #299947;">
+                <b>✅ REALIZADO ({ano_sel})</b>
+                <h2>{total_realizado:,.0f}</h2>
+                {texto_crescimento}
+            </div>
+        """, unsafe_allow_html=True)
+        
     with kpi3:
         cor_status = "#299947" if perc_total >= 100 else "#004a87"
-        st.markdown(f'<div class="kpi-container" style="border-left-color: {cor_status};"><b>📈 EFICIÊNCIA ({ano_sel})</b><h2>{perc_total:.1f}%</h2><span style="color:gray; font-
+        st.markdown(f"""
+            <div class="kpi-container" style="border-left-color: {cor_status};">
+                <b>📈 EFICIÊNCIA ({ano_sel})</b>
+                <h2>{perc_total:.1f}%</h2>
+                <span style="color:gray; font-size:12px;">Aproveitamento da meta</span>
+            </div>
+        """, unsafe_allow_html=True)
+        
+    with kpi4:
+        st.markdown(f"""
+            <div class="kpi-container" style="border-left-color: #ff9800;">
+                <b>📅 MÉDIA MENSAL REQUERIDA</b>
+                <h2>{media_necessaria_mes:,.0f}</h2>
+                <span style="color:gray; font-size:12px;">Próximos {meses_restantes} meses</span>
+            </div>
+        """, unsafe_allow_html=True)
