@@ -30,6 +30,12 @@ st.markdown("""
         font-weight: 700;
         margin-bottom: 20px;
     }
+    .growth-indicator {
+        font-size: 14px;
+        font-weight: bold;
+        margin-top: 5px;
+        display: block;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -85,7 +91,7 @@ if not df_raw.empty:
         if c in df_raw.columns:
             df_raw[c] = pd.to_numeric(df_raw[c], errors='coerce').fillna(0)
 
-    # Criar coluna com o Total Realizado na linha (soma dos meses) para facilitar gráficos
+    # Criar coluna com o Total Realizado na linha (soma dos meses)
     df_raw['TOTAL_REALIZADO_LINHA'] = df_raw[colunas_numericas[1:]].sum(axis=1)
 
     # --- INTERFACE ---
@@ -98,7 +104,6 @@ if not df_raw.empty:
         unidades_disponiveis = sorted(df_raw['UNIDADE_NOME'].unique().tolist())
         unidade_sel = st.selectbox("Unidade:", unidades_disponiveis)
     
-    # Primeiro filtro por Unidade afeta todo o escopo do painel
     df_unidade = df_raw[df_raw['UNIDADE_NOME'] == unidade_sel].copy()
 
     with col_a:
@@ -108,54 +113,83 @@ if not df_raw.empty:
         else:
             ano_sel = "Geral"
 
-    # Base filtrada para os KPIs e gráficos individuais (Ano selecionado)
+    # Base filtrada para o Ano selecionado e Clínica específica
     df_filtrado = df_unidade[df_unidade[COL_ANO] == ano_sel] if COL_ANO in df_unidade.columns else df_unidade.copy()
 
     with col_c:
         clinicas_disponiveis = ["TODAS"] + sorted(df_filtrado[COL_CLINICA].dropna().unique().tolist())
         clinica_sel = st.selectbox("Filtrar por Clínica:", clinicas_disponiveis)
 
+    # Base estrita para os números do painel superior
+    df_kpi_atual = df_filtrado.copy()
     if clinica_sel != "TODAS":
-        df_filtrado = df_filtrado[df_filtrado[COL_CLINICA] == clinica_sel]
+        df_kpi_atual = df_kpi_atual[df_kpi_atual[COL_CLINICA] == clinica_sel]
 
     # --- CÁLCULOS EXECUTIVOS DO ANO SELECIONADO ---
-    total_meta = df_filtrado[COL_META].sum()
-    meses_reais = [m for m in MESES if m in df_filtrado.columns]
-    total_realizado = df_filtrado['TOTAL_REALIZADO_LINHA'].sum()
+    total_meta = df_kpi_atual[COL_META].sum()
+    meses_reais = [m for m in MESES if m in df_kpi_atual.columns]
+    total_realizado = df_kpi_atual['TOTAL_REALIZADO_LINHA'].sum()
     falta = max(0, total_meta - total_realizado)
     perc_total = (total_realizado / total_meta * 100) if total_meta > 0 else 0
 
-    soma_por_mes = df_filtrado[meses_reais].sum() if meses_reais else pd.Series()
+    soma_por_mes = df_kpi_atual[meses_reais].sum() if meses_reais else pd.Series()
     meses_com_dados = sum(soma_por_mes > 0)
     total_meses_periodo = len(meses_reais) if meses_reais else 1
     meses_restantes = max(1, total_meses_periodo - meses_com_dados)
     media_necessaria_mes = int(falta / meses_restantes) if falta > 0 else 0
 
+    # --- LÓGICA DO INDICATIVO DE CRESCIMENTO ---
+    texto_crescimento = '<span style="color:gray; font-size:12px;">Primeiro período registrado</span>'
+    
+    if COL_ANO in df_unidade.columns and len(anos_disponiveis) > 1:
+        try:
+            # Encontra o índice do ano selecionado e pega o próximo na lista (o anterior no tempo cronológico)
+            idx_ano_atual = anos_disponiveis.index(ano_sel)
+            if idx_ano_atual < len(anos_disponiveis) - 1:
+                ano_anterior = anos_disponiveis[idx_ano_atual + 1]
+                
+                # Filtra os dados do ano anterior com base no mesmo critério de Clínica
+                df_ano_ant = df_unidade[df_unidade[COL_ANO] == ano_anterior]
+                if clinica_sel != "TODAS":
+                    df_ano_ant = df_ano_ant[df_ano_ant[COL_CLINICA] == clinica_sel]
+                
+                total_realizado_anterior = df_ano_ant['TOTAL_REALIZADO_LINHA'].sum()
+                
+                if total_realizado_anterior > 0:
+                    variacao = ((total_realizado - total_realizado_anterior) / total_realizado_anterior) * 100
+                    if variacao >= 0:
+                        texto_crescimento = f'<span class="growth-indicator" style="color:#299947;">▲ +{variacao:.1f}%</span> <span style="color:gray; font-size:12px;">vs {ano_anterior}</span>'
+                    else:
+                        texto_crescimento = f'<span class="growth-indicator" style="color:#d32f2f;">▼ {variacao:.1f}%</span> <span style="color:gray; font-size:12px;">vs {ano_anterior}</span>'
+                else:
+                    texto_crescimento = '<span style="color:gray; font-size:12px;">Sem dados em período anterior</span>'
+        except:
+            pass
+
     st.markdown("---")
 
-    # --- BLOCO DE METRICAS / KPIS ---
+    # --- BLOCO DE METRICAS / KPIS COM O CRESCIMENTO ENGENHARADO ---
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     with kpi1:
-        st.markdown(f'<div class="kpi-container"><b>🎯 META SEMESTRAL ({ano_sel})</b><h2>{total_meta:,.0f}</h2><span style="color:gray;">Procedimentos</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi-container"><b>🎯 META SEMESTRAL ({ano_sel})</b><h2>{total_meta:,.0f}</h2><span style="color:gray; font-size:12px;">Procedimentos planejados</span></div>', unsafe_allow_html=True)
     with kpi2:
-        st.markdown(f'<div class="kpi-container" style="border-left-color: #299947;"><b>✅ REALIZADO ({ano_sel})</b><h2>{total_realizado:,.0f}</h2><span style="color:gray;">Atendimentos</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi-container" style="border-left-color: #299947;"><b>✅ REALIZADO ({ano_sel})</b><h2>{total_realizado:,.0f}</h2>{texto_crescimento}</div>', unsafe_allow_html=True)
     with kpi3:
         cor_status = "#299947" if perc_total >= 100 else "#004a87"
-        st.markdown(f'<div class="kpi-container" style="border-left-color: {cor_status};"><b>📈 EFICIÊNCIA ({ano_sel})</b><h2>{perc_total:.1f}%</h2><span style="color:gray;">Aproveitamento</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi-container" style="border-left-color: {cor_status};"><b>📈 EFICIÊNCIA ({ano_sel})</b><h2>{perc_total:.1f}%</h2><span style="color:gray; font-size:12px;">Aproveitamento da meta</span></div>', unsafe_allow_html=True)
     with kpi4:
-        st.markdown(f'<div class="kpi-container" style="border-left-color: #ff9800;"><b>📅 MÉDIA MENSAL REQUERIDA</b><h2>{media_necessaria_mes:,.0f}</h2><span style="color:gray;">Próximos {meses_restantes} meses</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi-container" style="border-left-color: #ff9800;"><b>📅 MÉDIA MENSAL REQUERIDA</b><h2>{media_necessaria_mes:,.0f}</h2><span style="color:gray; font-size:12px;">Próximos {meses_restantes} meses</span></div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- NOVO BLOCO: COMPARATIVO ENTRE ANOS LETIVOS ---
+    # --- BLOCO: COMPARATIVO ENTRE ANOS LETIVOS ---
     st.markdown('<h3 style="color:#004a87;">📊 Comparativo Histórico de Realizados entre Anos Letivos</h3>', unsafe_allow_html=True)
     
-    # Prepara base agrupada por Clínica e Ano Letivo para a unidade atual
     df_comp = df_unidade.groupby([COL_CLINICA, COL_ANO])['TOTAL_REALIZADO_LINHA'].sum().reset_index()
     anos_historico = sorted(df_comp[COL_ANO].unique().tolist())
     
     fig_comp = go.Figure()
-    paleta_cores = ['#004a87', '#299947', '#ff9800', '#9c27b0'] # Cores para diferentes anos
+    paleta_cores = ['#004a87', '#299947', '#ff9800', '#9c27b0']
     
     for idx, ano in enumerate(anos_historico):
         df_ano_atual = df_comp[df_comp[COL_ANO] == ano]
@@ -197,8 +231,13 @@ if not df_raw.empty:
         st.plotly_chart(fig_donut, use_container_width=True)
 
     with c_bar:
-        resumo = df_filtrado.groupby(COL_CLINICA).agg({COL_META: 'sum'}).reset_index()
-        resumo['REALIZADO'] = df_filtrado.groupby(COL_CLINICA)['TOTAL_REALIZADO_LINHA'].sum().values
+        # Filtragem para a tabela/gráfico abaixo respeitar o filtro da clínica se não for "TODAS"
+        df_resumo_base = df_filtrado.copy()
+        if clinica_sel != "TODAS":
+            df_resumo_base = df_resumo_base[df_resumo_base[COL_CLINICA] == clinica_sel]
+            
+        resumo = df_resumo_base.groupby(COL_CLINICA).agg({COL_META: 'sum'}).reset_index()
+        resumo['REALIZADO'] = df_resumo_base.groupby(COL_CLINICA)['TOTAL_REALIZADO_LINHA'].sum().values
         
         fig_bar = go.Figure()
         fig_bar.add_trace(go.Bar(name='Realizado Atual', x=resumo[COL_CLINICA], y=resumo['REALIZADO'], marker_color='#299947', text=resumo['REALIZADO'], textposition='auto'))
