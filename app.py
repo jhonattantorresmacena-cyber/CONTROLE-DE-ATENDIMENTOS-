@@ -85,6 +85,9 @@ if not df_raw.empty:
         if c in df_raw.columns:
             df_raw[c] = pd.to_numeric(df_raw[c], errors='coerce').fillna(0)
 
+    # Criar coluna com o Total Realizado na linha (soma dos meses) para facilitar gráficos
+    df_raw['TOTAL_REALIZADO_LINHA'] = df_raw[colunas_numericas[1:]].sum(axis=1)
+
     # --- INTERFACE ---
     st.markdown('<h1 class="main-title">🏥 FASICLIN - Gestão de Metas e Produtividade</h1>', unsafe_allow_html=True)
 
@@ -95,16 +98,18 @@ if not df_raw.empty:
         unidades_disponiveis = sorted(df_raw['UNIDADE_NOME'].unique().tolist())
         unidade_sel = st.selectbox("Unidade:", unidades_disponiveis)
     
-    df_filtrado = df_raw.copy()
-    df_filtrado = df_filtrado[df_filtrado['UNIDADE_NOME'] == unidade_sel]
+    # Primeiro filtro por Unidade afeta todo o escopo do painel
+    df_unidade = df_raw[df_raw['UNIDADE_NOME'] == unidade_sel].copy()
 
     with col_a:
-        if COL_ANO in df_filtrado.columns:
-            anos_disponiveis = sorted(df_filtrado[COL_ANO].dropna().unique().tolist(), reverse=True)
-            ano_sel = st.selectbox("Ano Letivo:", anos_disponiveis)
-            df_filtrado = df_filtrado[df_filtrado[COL_ANO] == ano_sel]
+        if COL_ANO in df_unidade.columns:
+            anos_disponiveis = sorted(df_unidade[COL_ANO].dropna().unique().tolist(), reverse=True)
+            ano_sel = st.selectbox("Ano Letivo Principal (para os KPIs):", anos_disponiveis)
         else:
             ano_sel = "Geral"
+
+    # Base filtrada para os KPIs e gráficos individuais (Ano selecionado)
+    df_filtrado = df_unidade[df_unidade[COL_ANO] == ano_sel] if COL_ANO in df_unidade.columns else df_unidade.copy()
 
     with col_c:
         clinicas_disponiveis = ["TODAS"] + sorted(df_filtrado[COL_CLINICA].dropna().unique().tolist())
@@ -113,10 +118,10 @@ if not df_raw.empty:
     if clinica_sel != "TODAS":
         df_filtrado = df_filtrado[df_filtrado[COL_CLINICA] == clinica_sel]
 
-    # --- CÁLCULOS EXECUTIVOS ---
+    # --- CÁLCULOS EXECUTIVOS DO ANO SELECIONADO ---
     total_meta = df_filtrado[COL_META].sum()
     meses_reais = [m for m in MESES if m in df_filtrado.columns]
-    total_realizado = df_filtrado[meses_reais].sum().sum() if meses_reais else 0
+    total_realizado = df_filtrado['TOTAL_REALIZADO_LINHA'].sum()
     falta = max(0, total_meta - total_realizado)
     perc_total = (total_realizado / total_meta * 100) if total_meta > 0 else 0
 
@@ -128,25 +133,53 @@ if not df_raw.empty:
 
     st.markdown("---")
 
-    # --- MELHORIA 1: BLOCO DE METRICAS / KPIS PROFISSIONAIS ---
+    # --- BLOCO DE METRICAS / KPIS ---
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     with kpi1:
-        st.markdown(f'<div class="kpi-container"><b>🎯 META SEMESTRAL</b><h2>{total_meta:,.0f}</h2><span style="color:gray;">Procedimentos</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi-container"><b>🎯 META SEMESTRAL ({ano_sel})</b><h2>{total_meta:,.0f}</h2><span style="color:gray;">Procedimentos</span></div>', unsafe_allow_html=True)
     with kpi2:
-        st.markdown(f'<div class="kpi-container" style="border-left-color: #299947;"><b>✅ REALIZADO ACUMULADO</b><h2>{total_realizado:,.0f}</h2><span style="color:gray;">Atendimentos</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi-container" style="border-left-color: #299947;"><b>✅ REALIZADO ({ano_sel})</b><h2>{total_realizado:,.0f}</h2><span style="color:gray;">Atendimentos</span></div>', unsafe_allow_html=True)
     with kpi3:
         cor_status = "#299947" if perc_total >= 100 else "#004a87"
-        st.markdown(f'<div class="kpi-container" style="border-left-color: {cor_status};"><b>📈 EFICIÊNCIA DO PERÍODO</b><h2>{perc_total:.1f}%</h2><span style="color:gray;">Geral da Unidade</span></div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="kpi-container" style="border-left-color: {cor_status};"><b>📈 EFICIÊNCIA ({ano_sel})</b><h2>{perc_total:.1f}%</h2><span style="color:gray;">Aproveitamento</span></div>', unsafe_allow_html=True)
     with kpi4:
-        st.markdown(f'<div class="kpi-container" style="border-left-color: #ff9800;"><b>📅 MÉDIA MENSAL REQUERIDA</b><h2>{media_necessaria_mes:,.0f}</h2><span style="color:gray;">Nos próximos {meses_restantes} meses</span></div>', unsafe_allow_html=True)
-
-    # Mensagem de Sucesso dinâmica simplificada
-    if falta == 0:
-        st.success(f"🎉 **Excelente!** A meta planejada para {ano_sel} foi totalmente superada!")
+        st.markdown(f'<div class="kpi-container" style="border-left-color: #ff9800;"><b>📅 MÉDIA MENSAL REQUERIDA</b><h2>{media_necessaria_mes:,.0f}</h2><span style="color:gray;">Próximos {meses_restantes} meses</span></div>', unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- GRÁFICOS APERFEIÇOADOS ---
+    # --- NOVO BLOCO: COMPARATIVO ENTRE ANOS LETIVOS ---
+    st.markdown('<h3 style="color:#004a87;">📊 Comparativo Histórico de Realizados entre Anos Letivos</h3>', unsafe_allow_html=True)
+    
+    # Prepara base agrupada por Clínica e Ano Letivo para a unidade atual
+    df_comp = df_unidade.groupby([COL_CLINICA, COL_ANO])['TOTAL_REALIZADO_LINHA'].sum().reset_index()
+    anos_historico = sorted(df_comp[COL_ANO].unique().tolist())
+    
+    fig_comp = go.Figure()
+    paleta_cores = ['#004a87', '#299947', '#ff9800', '#9c27b0'] # Cores para diferentes anos
+    
+    for idx, ano in enumerate(anos_historico):
+        df_ano_atual = df_comp[df_comp[COL_ANO] == ano]
+        fig_comp.add_trace(go.Bar(
+            name=f"Realizado {ano}",
+            x=df_ano_atual[COL_CLINICA],
+            y=df_ano_atual['TOTAL_REALIZADO_LINHA'],
+            marker_color=paleta_cores[idx % len(paleta_cores)],
+            text=df_ano_atual['TOTAL_REALIZADO_LINHA'],
+            textposition='auto'
+        ))
+        
+    fig_comp.update_layout(
+        barmode='group',
+        height=320,
+        margin=dict(t=20, b=20),
+        legend=dict(orientation="h", y=1.1, x=0)
+    )
+    st.plotly_chart(fig_comp, use_container_width=True)
+    
+    st.markdown("---")
+
+    # --- SEÇÃO DO ANO ATUAL (GRÁFICOS COMPLEMENTARES) ---
+    st.markdown(f'<h3 style="color:#004a87;">📈 Visão Detalhada do Período Atual ({ano_sel})</h3>', unsafe_allow_html=True)
     c_donut, c_bar = st.columns([1, 2])
 
     with c_donut:
@@ -159,28 +192,27 @@ if not df_raw.empty:
         )])
         fig_donut.update_layout(
             annotations=[dict(text=f'Alcançado<br><b>{perc_total:.0f}%</b>', x=0.5, y=0.5, font_size=18, showarrow=False, font_color="#333")],
-            showlegend=True, legend=dict(orientation="h", x=0.2, y=-0.1), height=350, margin=dict(t=10, b=10, l=10, r=10)
+            showlegend=True, legend=dict(orientation="h", x=0.1, y=-0.1), height=350, margin=dict(t=10, b=10, l=10, r=10)
         )
         st.plotly_chart(fig_donut, use_container_width=True)
 
     with c_bar:
         resumo = df_filtrado.groupby(COL_CLINICA).agg({COL_META: 'sum'}).reset_index()
-        resumo['REALIZADO'] = df_filtrado.groupby(COL_CLINICA)[meses_reais].sum().sum(axis=1).values if meses_reais else 0
+        resumo['REALIZADO'] = df_filtrado.groupby(COL_CLINICA)['TOTAL_REALIZADO_LINHA'].sum().values
         
         fig_bar = go.Figure()
-        fig_bar.add_trace(go.Bar(name='Realizado', x=resumo[COL_CLINICA], y=resumo['REALIZADO'], marker_color='#299947', text=resumo['REALIZADO'], textposition='auto'))
-        fig_bar.add_trace(go.Bar(name='Meta', x=resumo[COL_CLINICA], y=resumo[COL_META], marker_color='#004a87', text=resumo[COL_META], textposition='auto'))
+        fig_bar.add_trace(go.Bar(name='Realizado Atual', x=resumo[COL_CLINICA], y=resumo['REALIZADO'], marker_color='#299947', text=resumo['REALIZADO'], textposition='auto'))
+        fig_bar.add_trace(go.Bar(name='Meta do Ano', x=resumo[COL_CLINICA], y=resumo[COL_META], marker_color='#004a87', text=resumo[COL_META], textposition='auto'))
         fig_bar.update_layout(barmode='group', height=350, margin=dict(t=20, b=20), legend=dict(orientation="h", y=1.1, x=0))
         st.plotly_chart(fig_bar, use_container_width=True)
 
-    # --- MELHORIA 2: DETALHAMENTO EM CARDS ELEGANTES ---
-    st.markdown('<h3 style="color:#004a87; margin-top:30px;">📋 Detalhamento Estratégico por Clínica</h3>', unsafe_allow_html=True)
+    # --- DETALHAMENTO EM CARDS ---
+    st.markdown('<h3 style="color:#004a87; margin-top:30px;">📋 Detalhes Individuais por Curso</h3>', unsafe_allow_html=True)
     cols = st.columns(3)
     
     for i, (_, row) in enumerate(resumo.iterrows()):
         p_ind = (row['REALIZADO'] / row[COL_META] * 100) if row[COL_META] > 0 else 0
         with cols[i % 3]:
-            # Divisão contida no card em HTML para design corporativo
             st.markdown(f"""
             <div class="metric-card">
                 <span style="font-size: 16px; font-weight: bold; color: #333;">{row[COL_CLINICA]}</span>
@@ -191,7 +223,6 @@ if not df_raw.empty:
                 </div>
             </div>
             """, unsafe_allow_html=True)
-            # Barra de progresso logo abaixo do Card para unificar o design
             st.progress(min(p_ind/100, 1.0))
             st.caption(f"Aproveitamento: {p_ind:.1f}% da meta")
 else:
