@@ -199,7 +199,7 @@ if not df_raw.empty:
         """, unsafe_allow_html=True)
   
     # --- BLOCO: COMPARATIVO ENTRE ANOS LETIVOS ---
-    st.markdown('<h3 style="color:#004a87;">📊 Comparativo Histórico de Realizados entre Anos Letivos</h3>', unsafe_allow_html=True)
+    st.markdown('<h3 style="color:#004a87;">📊 Comparativo entre Anos Letivos</h3>', unsafe_allow_html=True)
     
     df_comp = df_unidade.groupby([COL_CLINICA, COL_ANO])['TOTAL_REALIZADO_LINHA'].sum().reset_index()
     anos_historico = sorted(df_comp[COL_ANO].unique().tolist())
