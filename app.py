@@ -168,7 +168,7 @@ if not df_raw.empty:
 
     st.markdown("---")
 
-  # --- BLOCO DE METRICAS / KPIS COM O CRESCIMENTO ENGENHARADO ---
+    # --- BLOCO DE METRICAS / KPIS ---
     kpi1, kpi2, kpi3, kpi4 = st.columns(4)
     with kpi1:
         st.markdown(f"""
@@ -206,3 +206,95 @@ if not df_raw.empty:
                 <span style="color:gray; font-size:12px;">Próximos {meses_restantes} meses</span>
             </div>
         """, unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- BLOCO: COMPARATIVO ENTRE ANOS LETIVOS ---
+    st.markdown('<h3 style="color:#004a87;">📊 Comparativo Histórico de Realizados entre Anos Letivos</h3>', unsafe_allow_html=True)
+    
+    df_comp = df_unidade.groupby([COL_CLINICA, COL_ANO])['TOTAL_REALIZADO_LINHA'].sum().reset_index()
+    anos_historico = sorted(df_comp[COL_ANO].unique().tolist())
+    
+    fig_comp = go.Figure()
+    paleta_cores = ['#004a87', '#299947', '#ff9800', '#9c27b0']
+    
+    for idx, ano in enumerate(anos_historico):
+        df_ano_atual = df_comp[df_comp[COL_ANO] == ano]
+        fig_comp.add_trace(go.Bar(
+            name=f"Realizado {ano}",
+            x=df_ano_atual[COL_CLINICA],
+            y=df_ano_atual['TOTAL_REALIZADO_LINHA'],
+            marker_color=paleta_cores[idx % len(paleta_cores)],
+            text=df_ano_atual['TOTAL_REALIZADO_LINHA'],
+            textposition='auto'
+        ))
+        
+    fig_comp.update_layout(
+        barmode='group',
+        height=320,
+        margin=dict(t=20, b=20),
+        legend=dict(orientation="h", y=1.1, x=0)
+    )
+    st.plotly_chart(fig_comp, use_container_width=True)
+    
+    st.markdown("---")
+
+    # --- SEÇÃO DO ANO ATUAL (GRÁFICOS COMPLEMENTARES) ---
+    st.markdown(f'<h3 style="color:#004a87;">📈 Visão Detalhada do Período Atual ({ano_sel})</h3>', unsafe_allow_html=True)
+    c_donut, c_bar = st.columns([1, 2])
+
+    with c_donut:
+        valores_donut = [total_realizado, falta]
+        if sum(valores_donut) == 0:
+            valores_donut = [0, 1]
+            
+        fig_donut = go.Figure(data=[go.Pie(
+            labels=['Realizado', 'Restante'],
+            values=valores_donut,
+            hole=.75,
+            marker_colors=['#299947' if perc_total >= 100 else '#004a87', '#f1f3f5'],
+            textinfo='none'
+        )])
+        fig_donut.update_layout(
+            annotations=[dict(text=f'Alcançado<br><b>{perc_total:.0f}%</b>', x=0.5, y=0.5, font_size=18, showarrow=False, font_color="#333")],
+            showlegend=True, legend=dict(orientation="h", x=0.1, y=-0.1), height=350, margin=dict(t=10, b=10, l=10, r=10)
+        )
+        st.plotly_chart(fig_donut, use_container_width=True)
+
+    with c_bar:
+        df_resumo_base = df_filtrado.copy()
+        if clinica_sel != "TODAS":
+            df_resumo_base = df_resumo_base[df_resumo_base[COL_CLINICA] == clinica_sel]
+            
+        resumo = df_resumo_base.groupby(COL_CLINICA).agg({
+            COL_META: 'sum',
+            'TOTAL_REALIZADO_LINHA': 'sum'
+        }).reset_index().rename(columns={'TOTAL_REALIZADO_LINHA': 'REALIZADO'})
+        
+        fig_bar = go.Figure()
+        fig_bar.add_trace(go.Bar(name='Realizado Atual', x=resumo[COL_CLINICA], y=resumo['REALIZADO'], marker_color='#299947', text=resumo['REALIZADO'], textposition='auto'))
+        fig_bar.add_trace(go.Bar(name='Meta do Ano', x=resumo[COL_CLINICA], y=resumo[COL_META], marker_color='#004a87', text=resumo[COL_META], textposition='auto'))
+        fig_bar.update_layout(barmode='group', height=350, margin=dict(t=20, b=20), legend=dict(orientation="h", y=1.1, x=0))
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+    # --- DETALHAMENTO EM CARDS ---
+    st.markdown('<h3 style="color:#004a87; margin-top:30px;">📋 Detalhes Individuais por Curso</h3>', unsafe_allow_html=True)
+    cols = st.columns(3)
+    
+    for i, (_, row) in enumerate(resumo.iterrows()):
+        p_ind = (row['REALIZADO'] / row[COL_META] * 100) if row[COL_META] > 0 else 0
+        with cols[i % 3]:
+            st.markdown(f"""
+            <div class="metric-card">
+                <span style="font-size: 16px; font-weight: bold; color: #333;">{row[COL_CLINICA]}</span>
+                <hr style="margin: 8px 0; border: 0; border-top: 1px solid #eee;">
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: gray;">Realizado: <b>{int(row['REALIZADO'])}</b></span>
+                    <span style="color: gray;">Meta: <b>{int(row[COL_META])}</b></span>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            st.progress(min(p_ind/100, 1.0))
+            st.caption(f"Aproveitamento: {p_ind:.1f}% da meta")
+else:
+    st.warning("Nenhum dado pôde ser carregado. Certifique-se de que a planilha está aberta para 'Qualquer pessoa com o link'.")
