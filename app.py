@@ -248,7 +248,7 @@ if not df_raw.empty:
     
     st.markdown("---")
 
-    # --- Ajuste 3: SEÇÃO DE CORRELAÇÃO ATENDIMENTOS VS ALUNOS ---
+    # --- Ajuste 3: SEÇÃO DE CORRELAÇÃO ATENDIMENTOS VS ALUNOS (CORRIGIDO) ---
     if COL_ALUNOS in df_filtrado.columns:
         st.markdown('<h3 style="color:#004a87;">🔄 Correlação: Atendimentos vs Quantidade de Alunos</h3>', unsafe_allow_html=True)
         
@@ -285,13 +285,22 @@ if not df_raw.empty:
             textposition='auto'
         ))
 
+        # Correção da Sintaxe do Layout dos Eixos
         fig_corr.update_layout(
             barmode='group',
             height=380,
             margin=dict(t=30, b=20),
             legend=dict(orientation="h", y=1.15, x=0),
-            yaxis=dict(title="Procedimentos Realizados", titlefont=dict(color="#004a87"), tickfont=dict(color="#004a87")),
-            yaxis2=dict(title="Quantidade de Alunos", titlefont=dict(color="#ff9800"), tickfont=dict(color="#ff9800"), overlaying='y', side='right')
+            yaxis=dict(
+                title=dict(text="Procedimentos Realizados", font=dict(color="#004a87")), 
+                tickfont=dict(color="#004a87")
+            ),
+            yaxis2=dict(
+                title=dict(text="Quantidade de Alunos", font=dict(color="#ff9800")), 
+                tickfont=dict(color="#ff9800"), 
+                overlaying='y', 
+                side='right'
+            )
         )
         st.plotly_chart(fig_corr, use_container_width=True)
         st.markdown("---")
