@@ -78,6 +78,7 @@ if not df_raw.empty:
     COL_CLINICA = "CLINICA"
     COL_ANO = "ANO LETIVO"
     COL_META = "QUANTIDADE DE PROCEDIMENTO POR SEMESTRE"
+    COL_ALUNOS = "QUANTIDADE DE ALUNOS"
     MESES = ["FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO"]
 
     if COL_META not in df_raw.columns:
@@ -87,12 +88,15 @@ if not df_raw.empty:
                 break
 
     colunas_numericas = [COL_META] + [m for m in MESES if m in df_raw.columns]
+    if COL_ALUNOS in df_raw.columns:
+        colunas_numericas.append(COL_ALUNOS)
+
     for c in colunas_numericas:
         if c in df_raw.columns:
             df_raw[c] = pd.to_numeric(df_raw[c], errors='coerce').fillna(0)
 
     # Criar coluna com o Total Realizado na linha (soma dos meses)
-    df_raw['TOTAL_REALIZADO_LINHA'] = df_raw[colunas_numericas[1:]].sum(axis=1)
+    df_raw['TOTAL_REALIZADO_LINHA'] = df_raw[[m for m in MESES if m in df_raw.columns]].sum(axis=1)
 
     # --- INTERFACE ---
     st.markdown('<h1 class="main-title">🏥 FASICLIN - Gestão de Metas e Produtividade</h1>', unsafe_allow_html=True)
@@ -101,20 +105,31 @@ if not df_raw.empty:
     col_u, col_a, col_c = st.columns(3)
     
     with col_u:
-        unidades_disponiveis = sorted(df_raw['UNIDADE_NOME'].unique().tolist())
+        # Ajuste 1: Definindo ordem estrita para as unidades
+        ordem_unidades = ["SINOP", "SORRISO", "CUIABA", "RONDONOPOLIS", "PRIMAVERA"]
+        unidades_disponiveis = [u for u in ordem_unidades if u in df_raw['UNIDADE_NOME'].unique().tolist()]
+        # Caso exista alguma unidade fora do padrão mapeado, adiciona no final
+        for u in df_raw['UNIDADE_NOME'].unique():
+            if u not in unidades_disponiveis:
+                unidades_disponiveis.append(u)
+                
         unidade_sel = st.selectbox("Unidade:", unidades_disponiveis)
     
     df_unidade = df_raw[df_raw['UNIDADE_NOME'] == unidade_sel].copy()
 
     with col_a:
+        # Ajuste 2: Adicionando a opção "TODOS" no Ano Letivo Principal
         if COL_ANO in df_unidade.columns:
-            anos_disponiveis = sorted(df_unidade[COL_ANO].dropna().unique().tolist(), reverse=True)
+            anos_disponiveis = ["TODOS"] + sorted(df_unidade[COL_ANO].dropna().unique().tolist(), reverse=True)
             ano_sel = st.selectbox("Ano Letivo Principal (para os KPIs):", anos_disponiveis)
         else:
             ano_sel = "Geral"
 
-    # Base filtrada para o Ano selecionado e Clínica específica
-    df_filtrado = df_unidade[df_unidade[COL_ANO] == ano_sel] if COL_ANO in df_unidade.columns else df_unidade.copy()
+    # Base filtrada para o Ano selecionado
+    if ano_sel == "TODOS" or ano_sel == "Geral":
+        df_filtrado = df_unidade.copy()
+    else:
+        df_filtrado = df_unidade[df_unidade[COL_ANO] == ano_sel]
 
     with col_c:
         clinicas_disponiveis = ["TODAS"] + sorted(df_filtrado[COL_CLINICA].dropna().unique().tolist())
@@ -125,30 +140,24 @@ if not df_raw.empty:
     if clinica_sel != "TODAS":
         df_kpi_atual = df_kpi_atual[df_kpi_atual[COL_CLINICA] == clinica_sel]
 
-    # --- CÁLCULOS EXECUTIVOS DO ANO SELECIONADO ---
+    # --- CÁLCULOS EXECUTIVOS ---
     total_meta = df_kpi_atual[COL_META].sum()
     meses_reais = [m for m in MESES if m in df_kpi_atual.columns]
     total_realizado = df_kpi_atual['TOTAL_REALIZADO_LINHA'].sum()
     falta = max(0, total_meta - total_realizado)
     perc_total = (total_realizado / total_meta * 100) if total_meta > 0 else 0
-
-    soma_por_mes = df_kpi_atual[meses_reais].sum() if meses_reais else pd.Series()
-    meses_com_dados = sum(soma_por_mes > 0)
-    total_meses_periodo = len(meses_reais) if meses_reais else 1
-    meses_restantes = max(1, total_meses_periodo - meses_com_dados)
-    media_necessaria_mes = int(falta / meses_restantes) if falta > 0 else 0
+    total_alunos = df_kpi_atual[COL_ALUNOS].sum() if COL_ALUNOS in df_kpi_atual.columns else 0
 
     # --- LÓGICA DO INDICATIVO DE CRESCIMENTO ---
     texto_crescimento = '<span style="color:gray; font-size:12px;">Primeiro período registrado</span>'
     
-    if COL_ANO in df_unidade.columns and len(anos_disponiveis) > 1:
+    if COL_ANO in df_unidade.columns and ano_sel != "TODOS" and ano_sel != "Geral":
+        anos_validos = sorted(df_unidade[COL_ANO].dropna().unique().tolist(), reverse=True)
         try:
-            # Encontra o índice do ano selecionado e pega o próximo na lista (o anterior no tempo cronológico)
-            idx_ano_atual = anos_disponiveis.index(ano_sel)
-            if idx_ano_atual < len(anos_disponiveis) - 1:
-                ano_anterior = anos_disponiveis[idx_ano_atual + 1]
+            idx_ano_atual = anos_validos.index(ano_sel)
+            if idx_ano_atual < len(anos_validos) - 1:
+                ano_anterior = anos_validos[idx_ano_atual + 1]
                 
-                # Filtra os dados do ano anterior com base no mesmo critério de Clínica
                 df_ano_ant = df_unidade[df_unidade[COL_ANO] == ano_anterior]
                 if clinica_sel != "TODAS":
                     df_ano_ant = df_ano_ant[df_ano_ant[COL_CLINICA] == clinica_sel]
@@ -165,6 +174,8 @@ if not df_raw.empty:
                     texto_crescimento = '<span style="color:gray; font-size:12px;">Sem dados em período anterior</span>'
         except:
             pass
+    elif ano_sel == "TODOS":
+        texto_crescimento = '<span style="color:gray; font-size:12px;">Visualizando histórico consolidado</span>'
 
     st.markdown("---")
 
@@ -195,6 +206,15 @@ if not df_raw.empty:
                 <b>📈 EFICIÊNCIA ({ano_sel})</b>
                 <h2>{perc_total:.1f}%</h2>
                 <span style="color:gray; font-size:12px;">Aproveitamento da meta</span>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with kpi4:
+        st.markdown(f"""
+            <div class="kpi-container" style="border-left-color: #ff9800;">
+                <b>👥 TOTAL DE ALUNOS ({ano_sel})</b>
+                <h2>{total_alunos:,.0f}</h2>
+                <span style="color:gray; font-size:12px;">Alunos alocados no período</span>
             </div>
         """, unsafe_allow_html=True)
   
@@ -228,8 +248,56 @@ if not df_raw.empty:
     
     st.markdown("---")
 
+    # --- Ajuste 3: SEÇÃO DE CORRELAÇÃO ATENDIMENTOS VS ALUNOS ---
+    if COL_ALUNOS in df_filtrado.columns:
+        st.markdown('<h3 style="color:#004a87;">🔄 Correlação: Atendimentos vs Quantidade de Alunos</h3>', unsafe_allow_html=True)
+        
+        df_corr_base = df_filtrado.copy()
+        if clinica_sel != "TODAS":
+            df_corr_base = df_corr_base[df_corr_base[COL_CLINICA] == clinica_sel]
+            
+        df_corr = df_corr_base.groupby(COL_CLINICA).agg({
+            COL_ALUNOS: 'sum',
+            'TOTAL_REALIZADO_LINHA': 'sum'
+        }).reset_index()
+        
+        # Gráfico de Dispersão/Linhas para Correlação Directa
+        fig_corr = go.Figure()
+        
+        # Adiciona as barras de Realizado vs Alunos de forma combinada
+        fig_corr.add_trace(go.Bar(
+            name="Quantidade de Alunos",
+            x=df_corr[COL_CLINICA],
+            y=df_corr[COL_ALUNOS],
+            marker_color='#ff9800',
+            yaxis='y2',
+            text=df_corr[COL_ALUNOS],
+            textposition='auto',
+            opacity=0.75
+        ))
+        
+        fig_corr.add_trace(go.Bar(
+            name="Procedimentos Realizados",
+            x=df_corr[COL_CLINICA],
+            y=df_corr['TOTAL_REALIZADO_LINHA'],
+            marker_color='#004a87',
+            text=df_corr['TOTAL_REALIZADO_LINHA'],
+            textposition='auto'
+        ))
+
+        fig_corr.update_layout(
+            barmode='group',
+            height=380,
+            margin=dict(t=30, b=20),
+            legend=dict(orientation="h", y=1.15, x=0),
+            yaxis=dict(title="Procedimentos Realizados", titlefont=dict(color="#004a87"), tickfont=dict(color="#004a87")),
+            yaxis2=dict(title="Quantidade de Alunos", titlefont=dict(color="#ff9800"), tickfont=dict(color="#ff9800"), overlaying='y', side='right')
+        )
+        st.plotly_chart(fig_corr, use_container_width=True)
+        st.markdown("---")
+
     # --- SEÇÃO DO ANO ATUAL (GRÁFICOS COMPLEMENTARES) ---
-    st.markdown(f'<h3 style="color:#004a87;">📈 Visão Detalhada do Período Atual ({ano_sel})</h3>', unsafe_allow_html=True)
+    st.markdown(f'<h3 style="color:#004a87;">📈 Visão Detalhada do Período ({ano_sel})</h3>', unsafe_allow_html=True)
     c_donut, c_bar = st.columns([1, 2])
 
     with c_donut:
@@ -257,7 +325,8 @@ if not df_raw.empty:
             
         resumo = df_resumo_base.groupby(COL_CLINICA).agg({
             COL_META: 'sum',
-            'TOTAL_REALIZADO_LINHA': 'sum'
+            'TOTAL_REALIZADO_LINHA': 'sum',
+            **({COL_ALUNOS: 'sum'} if COL_ALUNOS in df_resumo_base.columns else {})
         }).reset_index().rename(columns={'TOTAL_REALIZADO_LINHA': 'REALIZADO'})
         
         fig_bar = go.Figure()
@@ -272,14 +341,21 @@ if not df_raw.empty:
     
     for i, (_, row) in enumerate(resumo.iterrows()):
         p_ind = (row['REALIZADO'] / row[COL_META] * 100) if row[COL_META] > 0 else 0
+        aluno_txt = f"Alunos: <b>{int(row[COL_ALUNOS])}</b>" if COL_ALUNOS in row else ""
+        media_atend_aluno = (row['REALIZADO'] / row[COL_ALUNOS]) if COL_ALUNOS in row and row[COL_ALUNOS] > 0 else 0
+        
         with cols[i % 3]:
             st.markdown(f"""
             <div class="metric-card">
                 <span style="font-size: 16px; font-weight: bold; color: #333;">{row[COL_CLINICA]}</span>
                 <hr style="margin: 8px 0; border: 0; border-top: 1px solid #eee;">
-                <div style="display: flex; justify-content: space-between;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
                     <span style="color: gray;">Realizado: <b>{int(row['REALIZADO'])}</b></span>
                     <span style="color: gray;">Meta: <b>{int(row[COL_META])}</b></span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                    <span style="color: #ff9800;">{aluno_txt}</span>
+                    <span style="color: #004a87;">Média/Aluno: <b>{media_atend_aluno:.1f}</b></span>
                 </div>
             </div>
             """, unsafe_allow_html=True)
