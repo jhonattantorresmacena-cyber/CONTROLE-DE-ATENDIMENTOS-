@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 import time
 
@@ -253,10 +254,10 @@ if not df_raw.empty:
     
     st.markdown("---")
 
-   # --- SEÇÃO DE CORRELAÇÃO AVANÇADA (DISPERSÃO DE EFICIÊNCIA) ---
+    # --- SUBSTITUIÇÃO: SEÇÃO DE MATRIZ DE EFICIÊNCIA AVANÇADA ---
     if COL_ALUNOS in df_filtrado.columns:
         st.markdown('<h3 style="color:#004a87;">🔄 Matriz de Eficiência: Atendimentos vs Quantidade de Alunos</h3>', unsafe_allow_html=True)
-        st.markdown('<span style="color:gray; font-size:14px; display:block; margin-bottom:15px;">Direcionamento: Clínicas <b>acima da linha tracejada</b> estão com produtividade acima da média da unidade.</span>', unsafe_allow_html=True)
+        st.markdown('<span style="color:gray; font-size:14px; display:block; margin-bottom:15px;">Direcionamento: Clínicas <b>acima da linha tracejada</b> estão entregando uma produtividade acima da média da unidade.</span>', unsafe_allow_html=True)
         
         df_corr_base = df_filtrado.copy()
         if clinica_sel != "TODAS":
@@ -269,12 +270,11 @@ if not df_raw.empty:
         
         fig_corr = go.Figure()
         
-        # Cores customizadas para dar identidade visual premium a cada clínica
+        # Paleta de cores premium para diferenciar cada bolha das clínicas
         cores_clinicas = ['#004a87', '#299947', '#ff9800', '#9c27b0', '#e31a1c', '#33a02c']
         
-        # 1. Adiciona os pontos (bolhas) de cada clínica
+        # 1. Adiciona os pontos das clínicas como bolhas explicativas
         for idx, row in df_corr.iterrows():
-            # Média de atendimento por aluno individual da linha
             media_ind = row['TOTAL_REALIZADO_LINHA'] / row[COL_ALUNOS] if row[COL_ALUNOS] > 0 else 0
             
             fig_corr.add_trace(go.Scatter(
@@ -283,7 +283,7 @@ if not df_raw.empty:
                 mode='markers+text',
                 name=row[COL_CLINICA],
                 marker=dict(
-                    size=24,  # Bolha grande e elegante
+                    size=24,
                     color=cores_clinicas[idx % len(cores_clinicas)],
                     line=dict(width=2, color='white')
                 ),
@@ -297,18 +297,18 @@ if not df_raw.empty:
                 )
             ))
             
-        # 2. Criar a Linha Guia de Tendência Média (Linear)
+        # 2. Cria a Linha Guia de Tendência usando Numpy (Sem dependências externas de pacotes)
         if len(df_corr) > 1 and df_corr[COL_ALUNOS].sum() > 0:
-            # Ordena para desenhar a linha perfeitamente do início ao fim do gráfico
             df_linha = df_corr.sort_values(by=COL_ALUNOS)
+            x_vals = df_linha[COL_ALUNOS].values
+            y_vals = df_linha['TOTAL_REALIZADO_LINHA'].values
             
-            # Cálculo de regressão linear simples para a linha de tendência
-            from scipy import stats
-            slope, intercept, r_value, p_value, std_err = stats.linregress(df_linha[COL_ALUNOS], df_linha['TOTAL_REALIZADO_LINHA'])
-            linha_y = slope * df_linha[COL_ALUNOS] + intercept
+            # Regressão linear pelo numpy
+            slope, intercept = np.polyfit(x_vals, y_vals, 1)
+            linha_y = slope * x_vals + intercept
             
             fig_corr.add_trace(go.Scatter(
-                x=df_linha[COL_ALUNOS],
+                x=x_vals,
                 y=linha_y,
                 mode='lines',
                 name='Tendência Média de Entrega',
@@ -316,16 +316,15 @@ if not df_raw.empty:
                 hoverinfo='skip'
             ))
 
-        # Ajustes de design limpo e espaçamento para os textos não cortarem
         max_x = df_corr[COL_ALUNOS].max() * 1.15 if not df_corr.empty else 10
         max_y = df_corr['TOTAL_REALIZADO_LINHA'].max() * 1.15 if not df_corr.empty else 10
 
         fig_corr.update_layout(
             height=450,
             margin=dict(t=20, b=40, l=40, r=40),
-            showlegend=False,  # Remove legenda poluída, os nomes já estão nos pontos
+            showlegend=False,
             xaxis=dict(
-                title="Quantidade de Alunos Equipe (Volume)",
+                title="Quantidade de Alunos da Equipe (Volume)",
                 gridcolor="#f1f3f5",
                 range=[0, max_x]
             ),
@@ -335,27 +334,6 @@ if not df_raw.empty:
                 range=[0, max_y]
             ),
             plot_bgcolor='white'
-        )
-        st.plotly_chart(fig_corr, use_container_width=True)
-        st.markdown("---")
-        # Ajustes finos de layout para evitar sobreposições
-        fig_corr.update_layout(
-            height=420,
-            margin=dict(t=50, b=20, l=10, r=10),
-            legend=dict(orientation="h", y=1.15, x=0),
-            hovermode="x unified", # Mostra os dois dados ao passar o mouse verticalmente
-            yaxis=dict(
-                title=dict(text="Procedimentos Realizados", font=dict(color="#004a87")), 
-                tickfont=dict(color="#004a87"),
-                gridcolor="#e9ecef" # Linhas de grade suaves ao fundo
-            ),
-            yaxis2=dict(
-                title=dict(text="Quantidade de Alunos", font=dict(color="#ff9800")), 
-                tickfont=dict(color="#ff9800"), 
-                overlaying='y', 
-                side='right',
-                showgrid=False # Desativa a segunda grade para não confundir a leitura
-            )
         )
         st.plotly_chart(fig_corr, use_container_width=True)
         st.markdown("---")
