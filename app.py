@@ -74,12 +74,21 @@ def load_all_data():
 
 df_raw = load_all_data()
 
+# --- SUBSTITUIÇÃO DA LÓGICA DINÂMICA DE MESES ---
 if not df_raw.empty:
     COL_CLINICA = "CLINICA"
     COL_ANO = "ANO LETIVO"
     COL_META = "QUANTIDADE DE PROCEDIMENTO POR SEMESTRE"
     COL_ALUNOS = "QUANTIDADE DE ALUNOS"
-    MESES = ["FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO"]
+    
+    # Lista global com todos os meses possíveis do ano para garantir a extração futura
+    TODOS_OS_MESES_ANO = [
+        "JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", 
+        "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"
+    ]
+    
+    # Identifica dinamicamente quais desses meses existem como colunas na planilha atual
+    MESES_DETECTADOS = [m for m in TODOS_OS_MESES_ANO if m in df_raw.columns]
 
     if COL_META not in df_raw.columns:
         for c in df_raw.columns:
@@ -87,7 +96,8 @@ if not df_raw.empty:
                 COL_META = c
                 break
 
-    colunas_numericas = [COL_META] + [m for m in MESES if m in df_raw.columns]
+    # Configura as colunas numéricas com base nos meses reais encontrados na planilha
+    colunas_numericas = [COL_META] + MESES_DETECTADOS
     if COL_ALUNOS in df_raw.columns:
         colunas_numericas.append(COL_ALUNOS)
 
@@ -95,8 +105,9 @@ if not df_raw.empty:
         if c in df_raw.columns:
             df_raw[c] = pd.to_numeric(df_raw[c], errors='coerce').fillna(0)
 
-    # Criar coluna com o Total Realizado na linha (soma dos meses)
-    df_raw['TOTAL_REALIZADO_LINHA'] = df_raw[[m for m in MESES if m in df_raw.columns]].sum(axis=1)
+    # Cria a coluna com o Total Realizado somando apenas os meses existentes de forma dinâmica
+    df_raw['TOTAL_REALIZADO_LINHA'] = df_raw[MESES_DETECTADOS].sum(axis=1)
+    # ------------------------------------------------
 
     # --- INTERFACE ---
     st.markdown('<h1 class="main-title">🏥 FASICLIN - Gestão de Metas e Produtividade</h1>', unsafe_allow_html=True)
@@ -105,10 +116,8 @@ if not df_raw.empty:
     col_u, col_a, col_c = st.columns(3)
     
     with col_u:
-        # Ajuste 1: Definindo ordem estrita para as unidades
         ordem_unidades = ["SINOP", "SORRISO", "CUIABA", "RONDONOPOLIS", "PRIMAVERA"]
         unidades_disponiveis = [u for u in ordem_unidades if u in df_raw['UNIDADE_NOME'].unique().tolist()]
-        # Caso exista alguma unidade fora do padrão mapeado, adiciona no final
         for u in df_raw['UNIDADE_NOME'].unique():
             if u not in unidades_disponiveis:
                 unidades_disponiveis.append(u)
@@ -118,14 +127,12 @@ if not df_raw.empty:
     df_unidade = df_raw[df_raw['UNIDADE_NOME'] == unidade_sel].copy()
 
     with col_a:
-        # Ajuste 2: Adicionando a opção "TODOS" no Ano Letivo Principal
         if COL_ANO in df_unidade.columns:
             anos_disponiveis = ["TODOS"] + sorted(df_unidade[COL_ANO].dropna().unique().tolist(), reverse=True)
             ano_sel = st.selectbox("Ano Letivo Principal (para os KPIs):", anos_disponiveis)
         else:
             ano_sel = "Geral"
 
-    # Base filtrada para o Ano selecionado
     if ano_sel == "TODOS" or ano_sel == "Geral":
         df_filtrado = df_unidade.copy()
     else:
@@ -135,14 +142,12 @@ if not df_raw.empty:
         clinicas_disponiveis = ["TODAS"] + sorted(df_filtrado[COL_CLINICA].dropna().unique().tolist())
         clinica_sel = st.selectbox("Filtrar por Clínica:", clinicas_disponiveis)
 
-    # Base estrita para os números do painel superior
     df_kpi_atual = df_filtrado.copy()
     if clinica_sel != "TODAS":
         df_kpi_atual = df_kpi_atual[df_kpi_atual[COL_CLINICA] == clinica_sel]
 
     # --- CÁLCULOS EXECUTIVOS ---
     total_meta = df_kpi_atual[COL_META].sum()
-    meses_reais = [m for m in MESES if m in df_kpi_atual.columns]
     total_realizado = df_kpi_atual['TOTAL_REALIZADO_LINHA'].sum()
     falta = max(0, total_meta - total_realizado)
     perc_total = (total_realizado / total_meta * 100) if total_meta > 0 else 0
@@ -248,7 +253,7 @@ if not df_raw.empty:
     
     st.markdown("---")
 
-    # --- Ajuste 3: SEÇÃO DE CORRELAÇÃO ATENDIMENTOS VS ALUNOS (CORRIGIDO) ---
+    # --- SEÇÃO DE CORRELAÇÃO ATENDIMENTOS VS ALUNOS ---
     if COL_ALUNOS in df_filtrado.columns:
         st.markdown('<h3 style="color:#004a87;">🔄 Correlação: Atendimentos vs Quantidade de Alunos</h3>', unsafe_allow_html=True)
         
@@ -261,10 +266,8 @@ if not df_raw.empty:
             'TOTAL_REALIZADO_LINHA': 'sum'
         }).reset_index()
         
-        # Gráfico de Dispersão/Linhas para Correlação Directa
         fig_corr = go.Figure()
         
-        # Adiciona as barras de Realizado vs Alunos de forma combinada
         fig_corr.add_trace(go.Bar(
             name="Quantidade de Alunos",
             x=df_corr[COL_CLINICA],
@@ -285,7 +288,6 @@ if not df_raw.empty:
             textposition='auto'
         ))
 
-        # Correção da Sintaxe do Layout dos Eixos
         fig_corr.update_layout(
             barmode='group',
             height=380,
