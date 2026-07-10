@@ -253,7 +253,7 @@ if not df_raw.empty:
     
     st.markdown("---")
 
-    # --- SEÇÃO DE CORRELAÇÃO ATENDIMENTOS VS ALUNOS ---
+   # --- SEÇÃO DE CORRELAÇÃO ATENDIMENTOS VS ALUNOS (OTIMIZADO) ---
     if COL_ALUNOS in df_filtrado.columns:
         st.markdown('<h3 style="color:#004a87;">🔄 Correlação: Atendimentos vs Quantidade de Alunos</h3>', unsafe_allow_html=True)
         
@@ -266,42 +266,52 @@ if not df_raw.empty:
             'TOTAL_REALIZADO_LINHA': 'sum'
         }).reset_index()
         
+        # Ordenar por volume de atendimentos para deixar o gráfico mais harmônico
+        df_corr = df_corr.sort_values(by='TOTAL_REALIZADO_LINHA', ascending=False)
+        
         fig_corr = go.Figure()
         
-        fig_corr.add_trace(go.Bar(
-            name="Quantidade de Alunos",
-            x=df_corr[COL_CLINICA],
-            y=df_corr[COL_ALUNOS],
-            marker_color='#ff9800',
-            yaxis='y2',
-            text=df_corr[COL_ALUNOS],
-            textposition='auto',
-            opacity=0.75
-        ))
-        
+        # 1. Procedimentos Realizados continuam em BARRA (Eixo Y Esquerdo)
         fig_corr.add_trace(go.Bar(
             name="Procedimentos Realizados",
             x=df_corr[COL_CLINICA],
             y=df_corr['TOTAL_REALIZADO_LINHA'],
             marker_color='#004a87',
             text=df_corr['TOTAL_REALIZADO_LINHA'],
-            textposition='auto'
+            textposition='outside', # Texto fora da barra para não sumir
+            cliponaxis=False
+        ))
+        
+        # 2. MELHORIA CRUCIAL: Quantidade de Alunos vira LINHA COM MARCADORES (Eixo Y Direito)
+        fig_corr.add_trace(go.Scatter(
+            name="Quantidade de Alunos",
+            x=df_corr[COL_CLINICA],
+            y=df_corr[COL_ALUNOS],
+            marker=dict(size=10, color='#ff9800', symbol='circle'),
+            line=dict(width=3, color='#ff9800'),
+            yaxis='y2',
+            text=df_corr[COL_ALUNOS],
+            mode='lines+markers+text',
+            textposition='top center' # Texto acima do ponto da linha
         ))
 
+        # Ajustes finos de layout para evitar sobreposições
         fig_corr.update_layout(
-            barmode='group',
-            height=380,
-            margin=dict(t=30, b=20),
+            height=420,
+            margin=dict(t=50, b=20, l=10, r=10),
             legend=dict(orientation="h", y=1.15, x=0),
+            hovermode="x unified", # Mostra os dois dados ao passar o mouse verticalmente
             yaxis=dict(
                 title=dict(text="Procedimentos Realizados", font=dict(color="#004a87")), 
-                tickfont=dict(color="#004a87")
+                tickfont=dict(color="#004a87"),
+                gridcolor="#e9ecef" # Linhas de grade suaves ao fundo
             ),
             yaxis2=dict(
                 title=dict(text="Quantidade de Alunos", font=dict(color="#ff9800")), 
                 tickfont=dict(color="#ff9800"), 
                 overlaying='y', 
-                side='right'
+                side='right',
+                showgrid=False # Desativa a segunda grade para não confundir a leitura
             )
         )
         st.plotly_chart(fig_corr, use_container_width=True)
