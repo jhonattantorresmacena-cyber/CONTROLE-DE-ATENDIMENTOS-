@@ -248,10 +248,9 @@ if not df_raw.empty:
     
     st.markdown("---")
 
-    # --- SEÇÃO DE MATRIZ DE EFICIÊNCIA BLINDADA ---
+    # --- SEÇÃO DE CORRELAÇÃO: ANÁLISE DE LINHAS DUPLAS (PRODUTIVIDADE) ---
     if COL_ALUNOS in df_filtrado.columns:
-        st.markdown('<h3 style="color:#004a87;">🔄 Matriz de Eficiência: Atendimentos vs Quantidade de Alunos</h3>', unsafe_allow_html=True)
-        st.markdown('<span style="color:gray; font-size:14px; display:block; margin-bottom:15px;">Direcionamento: Clínicas <b>acima da linha tracejada</b> estão entregando uma produtividade acima da média da unidade.</span>', unsafe_allow_html=True)
+        st.markdown('<h3 style="color:#004a87;">🔄 Correlação Temporal: Procedimentos vs Quantidade de Alunos</h3>', unsafe_allow_html=True)
         
         df_corr_base = df_filtrado.copy()
         if clinica_sel != "TODAS":
@@ -262,75 +261,65 @@ if not df_raw.empty:
             'TOTAL_REALIZADO_LINHA': 'sum'
         }).reset_index()
         
-        fig_corr = go.Figure()
-        cores_clinicas = ['#004a87', '#299947', '#ff9800', '#9c27b0', '#e31a1c', '#33a02c']
+        # Ordena pelo volume de procedimentos para dar consistência visual ao gráfico
+        df_corr = df_corr.sort_values(by='TOTAL_REALIZADO_LINHA', ascending=False)
         
-        for idx, row in df_corr.iterrows():
-            media_ind = row['TOTAL_REALIZADO_LINHA'] / row[COL_ALUNOS] if row[COL_ALUNOS] > 0 else 0
-            
-            fig_corr.add_trace(go.Scatter(
-                x=[row[COL_ALUNOS]],
-                y=[row['TOTAL_REALIZADO_LINHA']],
-                mode='markers+text',
-                name=row[COL_CLINICA],
-                marker=dict(
-                    size=24,
-                    color=cores_clinicas[idx % len(cores_clinicas)],
-                    line=dict(width=2, color='white')
-                ),
-                text=[f"<b>{row[COL_CLINICA]}</b><br>{int(row['TOTAL_REALIZADO_LINHA'])} atend."],
-                textposition="top center",
-                hovertemplate=(
-                    f"<b>{row[COL_CLINICA]}</b><br>" +
-                    f"Alunos Alocados: {int(row[COL_ALUNOS])}<br>" +
-                    f"Total de Atendimentos: {int(row['TOTAL_REALIZADO_LINHA'])}<br>" +
-                    f"Média/Aluno: {media_ind:.1f}<extra></extra>"
-                )
-            ))
-            
-        # BLINDAGEM DA LINHA DE TENDÊNCIA: Só calcula se tiver 2 ou mais clínicas com valores diferentes no eixo X
-        if len(df_corr) > 1 and df_corr[COL_ALUNOS].nunique() > 1:
-            try:
-                df_linha = df_corr.sort_values(by=COL_ALUNOS)
-                x_vals = df_linha[COL_ALUNOS].values
-                y_vals = df_linha['TOTAL_REALIZADO_LINHA'].values
-                
-                slope, intercept = np.polyfit(x_vals, y_vals, 1)
-                linha_y = slope * x_vals + intercept
-                
-                fig_corr.add_trace(go.Scatter(
-                    x=x_vals,
-                    y=linha_y,
-                    mode='lines',
-                    name='Tendência Média de Entrega',
-                    line=dict(color='rgba(150, 150, 150, 0.5)', width=2, dash='dash'),
-                    hoverinfo='skip'
-                ))
-            except:
-                pass # Se falhar por qualquer motivo matemático, ignora a linha silenciosamente
+        fig_corr = go.Figure()
+        
+        # 1. NOVA LINHA: Quantidade de Procedimentos Realizados (Eixo Y Esquerdo - Azul)
+        fig_corr.add_trace(go.Scatter(
+            name="Procedimentos Realizados",
+            x=df_corr[COL_CLINICA],
+            y=df_corr['TOTAL_REALIZADO_LINHA'],
+            mode='lines+markers+text',
+            marker=dict(size=10, color='#004a87', symbol='square'),
+            line=dict(width=4, color='#004a87'),
+            text=df_corr['TOTAL_REALIZADO_LINHA'],
+            textposition='top center',
+            hovertemplate="<b>%{x}</b><br>Procedimentos: %{y:,.0f}<extra></extra>"
+        ))
+        
+        # 2. LINHA MANTIDA: Quantidade de Alunos (Eixo Y Direito - Laranja)
+        fig_corr.add_trace(go.Scatter(
+            name="Quantidade de Alunos",
+            x=df_corr[COL_CLINICA],
+            y=df_corr[COL_ALUNOS],
+            mode='lines+markers+text',
+            marker=dict(size=10, color='#ff9800', symbol='circle'),
+            line=dict(width=4, color='#ff9800'),
+            yaxis='y2',
+            text=df_corr[COL_ALUNOS],
+            textposition='bottom center', # Posicionado abaixo do marcador para nunca colidir com os números de cima
+            hovertemplate="<b>%{x}</b><br>Alunos: %{y:,.0f}<extra></extra>"
+        ))
 
-        max_x = df_corr[COL_ALUNOS].max() * 1.15 if not df_corr.empty else 10
-        max_y = df_corr['TOTAL_REALIZADO_LINHA'].max() * 1.15 if not df_corr.empty else 10
+        # Margem de respiro para os rótulos textuais não cortarem nas bordas superior/inferior
+        max_y1 = df_corr['TOTAL_REALIZADO_LINHA'].max() * 1.15 if not df_corr.empty else 100
+        max_y2 = df_corr[COL_ALUNOS].max() * 1.15 if not df_corr.empty else 100
 
         fig_corr.update_layout(
-            height=450,
-            margin=dict(t=20, b=40, l=40, r=40),
-            showlegend=False,
-            xaxis=dict(
-                title="Quantidade de Alunos da Equipe (Volume)",
-                gridcolor="#f1f3f5",
-                range=[0, max_x]
-            ),
+            height=420,
+            margin=dict(t=60, b=30, l=10, r=10),
+            legend=dict(orientation="h", y=1.18, x=0),
+            hovermode="x unified",
+            plot_bgcolor='white',
             yaxis=dict(
-                title="Procedimentos Realizados (Produção)",
+                title=dict(text="Procedimentos Realizados", font=dict(color="#004a87", size=13)), 
+                tickfont=dict(color="#004a87"),
                 gridcolor="#f1f3f5",
-                range=[0, max_y]
+                range=[0, max_y1]
             ),
-            plot_bgcolor='white'
+            yaxis2=dict(
+                title=dict(text="Quantidade de Alunos", font=dict(color="#ff9800", size=13)), 
+                tickfont=dict(color="#ff9800"), 
+                overlaying='y', 
+                side='right',
+                showgrid=False,
+                range=[0, max_y2]
+            )
         )
         st.plotly_chart(fig_corr, use_container_width=True)
         st.markdown("---")
-
     # --- SEÇÃO DO ANO ATUAL ---
     st.markdown(f'<h3 style="color:#004a87;">📈 Visão Detalhada do Período ({ano_sel})</h3>', unsafe_allow_html=True)
     c_donut, c_bar = st.columns([1, 2])
