@@ -248,7 +248,7 @@ if not df_raw.empty:
     
     st.markdown("---")
 
-   # --- SEÇÃO DE CORRELAÇÃO: ANÁLISE DE LINHAS DUPLAS (SEM SOBREPOSIÇÃO) ---
+    # --- SEÇÃO DE CORRELAÇÃO DEFINITIVA (LINHAS DUPLAS INTELEGENTES) ---
     if COL_ALUNOS in df_filtrado.columns:
         st.markdown('<h3 style="color:#004a87;">🔄 Correlação Temporal: Procedimentos vs Quantidade de Alunos</h3>', unsafe_allow_html=True)
         
@@ -274,8 +274,7 @@ if not df_raw.empty:
             marker=dict(size=10, color='#004a87', symbol='square'),
             line=dict(width=4, color='#004a87'),
             text=df_corr['TOTAL_REALIZADO_LINHA'],
-            # "top center" garante que o azul sempre fique para cima
-            textposition='top center', 
+            textposition='top center', # Sempre empurra o texto para cima do marcador
             textfont=dict(color='#004a87', font_weight='bold'),
             hovertemplate="<b>%{x}</b><br>Procedimentos: %{y:,.0f}<extra></extra>"
         ))
@@ -290,14 +289,12 @@ if not df_raw.empty:
             line=dict(width=4, color='#ff9800'),
             yaxis='y2',
             text=df_corr[COL_ALUNOS],
-            # AJUSTE CRUCIAL: "bottom center" força o número laranja para baixo, 
-            # evitando o choque que aconteceu em Odontologia
-            textposition='bottom center', 
+            textposition='bottom center', # Sempre empurra o texto para baixo do marcador (corrige Odontologia)
             textfont=dict(color='#ff9800', font_weight='bold'),
             hovertemplate="<b>%{x}</b><br>Alunos: %{y:,.0f}<extra></extra>"
         ))
 
-        # Aumentamos o multiplicador para 1.25 para dar um teto maior (evita cortar o 5094)
+        # Margem extra de 25% (1.25) para que o texto mais alto nunca raspe no topo do gráfico
         max_y1 = df_corr['TOTAL_REALIZADO_LINHA'].max() * 1.25 if not df_corr.empty else 100
         max_y2 = df_corr[COL_ALUNOS].max() * 1.25 if not df_corr.empty else 100
 
@@ -324,6 +321,7 @@ if not df_raw.empty:
         )
         st.plotly_chart(fig_corr, use_container_width=True)
         st.markdown("---")
+
     # --- SEÇÃO DO ANO ATUAL ---
     st.markdown(f'<h3 style="color:#004a87;">📈 Visão Detalhada do Período ({ano_sel})</h3>', unsafe_allow_html=True)
     c_donut, c_bar = st.columns([1, 2])
