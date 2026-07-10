@@ -75,20 +75,18 @@ def load_all_data():
 
 df_raw = load_all_data()
 
-# --- SUBSTITUIÇÃO DA LÓGICA DINÂMICA DE MESES ---
+# --- LÓGICA DINÂMICA DE MESES ---
 if not df_raw.empty:
     COL_CLINICA = "CLINICA"
     COL_ANO = "ANO LETIVO"
     COL_META = "QUANTIDADE DE PROCEDIMENTO POR SEMESTRE"
     COL_ALUNOS = "QUANTIDADE DE ALUNOS"
     
-    # Lista global com todos os meses possíveis do ano para garantir a extração futura
     TODOS_OS_MESES_ANO = [
         "JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", 
         "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"
     ]
     
-    # Identifica dinamicamente quais desses meses existem como colunas na planilha atual
     MESES_DETECTADOS = [m for m in TODOS_OS_MESES_ANO if m in df_raw.columns]
 
     if COL_META not in df_raw.columns:
@@ -97,7 +95,6 @@ if not df_raw.empty:
                 COL_META = c
                 break
 
-    # Configura as colunas numéricas com base nos meses reais encontrados na planilha
     colunas_numericas = [COL_META] + MESES_DETECTADOS
     if COL_ALUNOS in df_raw.columns:
         colunas_numericas.append(COL_ALUNOS)
@@ -106,14 +103,11 @@ if not df_raw.empty:
         if c in df_raw.columns:
             df_raw[c] = pd.to_numeric(df_raw[c], errors='coerce').fillna(0)
 
-    # Cria a coluna com o Total Realizado somando apenas os meses existentes de forma dinâmica
     df_raw['TOTAL_REALIZADO_LINHA'] = df_raw[MESES_DETECTADOS].sum(axis=1)
-    # ------------------------------------------------
 
     # --- INTERFACE ---
     st.markdown('<h1 class="main-title">🏥 FASICLIN - Gestão de Metas e Produtividade</h1>', unsafe_allow_html=True)
 
-    # Filtros dispostos de forma compacta
     col_u, col_a, col_c = st.columns(3)
     
     with col_u:
@@ -254,7 +248,7 @@ if not df_raw.empty:
     
     st.markdown("---")
 
-    # --- SUBSTITUIÇÃO: SEÇÃO DE MATRIZ DE EFICIÊNCIA AVANÇADA ---
+    # --- SEÇÃO DE MATRIZ DE EFICIÊNCIA BLINDADA ---
     if COL_ALUNOS in df_filtrado.columns:
         st.markdown('<h3 style="color:#004a87;">🔄 Matriz de Eficiência: Atendimentos vs Quantidade de Alunos</h3>', unsafe_allow_html=True)
         st.markdown('<span style="color:gray; font-size:14px; display:block; margin-bottom:15px;">Direcionamento: Clínicas <b>acima da linha tracejada</b> estão entregando uma produtividade acima da média da unidade.</span>', unsafe_allow_html=True)
@@ -269,11 +263,8 @@ if not df_raw.empty:
         }).reset_index()
         
         fig_corr = go.Figure()
-        
-        # Paleta de cores premium para diferenciar cada bolha das clínicas
         cores_clinicas = ['#004a87', '#299947', '#ff9800', '#9c27b0', '#e31a1c', '#33a02c']
         
-        # 1. Adiciona os pontos das clínicas como bolhas explicativas
         for idx, row in df_corr.iterrows():
             media_ind = row['TOTAL_REALIZADO_LINHA'] / row[COL_ALUNOS] if row[COL_ALUNOS] > 0 else 0
             
@@ -297,24 +288,26 @@ if not df_raw.empty:
                 )
             ))
             
-        # 2. Cria a Linha Guia de Tendência usando Numpy (Sem dependências externas de pacotes)
-        if len(df_corr) > 1 and df_corr[COL_ALUNOS].sum() > 0:
-            df_linha = df_corr.sort_values(by=COL_ALUNOS)
-            x_vals = df_linha[COL_ALUNOS].values
-            y_vals = df_linha['TOTAL_REALIZADO_LINHA'].values
-            
-            # Regressão linear pelo numpy
-            slope, intercept = np.polyfit(x_vals, y_vals, 1)
-            linha_y = slope * x_vals + intercept
-            
-            fig_corr.add_trace(go.Scatter(
-                x=x_vals,
-                y=linha_y,
-                mode='lines',
-                name='Tendência Média de Entrega',
-                line=dict(color='rgba(150, 150, 150, 0.5)', width=2, dash='dash'),
-                hoverinfo='skip'
-            ))
+        # BLINDAGEM DA LINHA DE TENDÊNCIA: Só calcula se tiver 2 ou mais clínicas com valores diferentes no eixo X
+        if len(df_corr) > 1 and df_corr[COL_ALUNOS].nunique() > 1:
+            try:
+                df_linha = df_corr.sort_values(by=COL_ALUNOS)
+                x_vals = df_linha[COL_ALUNOS].values
+                y_vals = df_linha['TOTAL_REALIZADO_LINHA'].values
+                
+                slope, intercept = np.polyfit(x_vals, y_vals, 1)
+                linha_y = slope * x_vals + intercept
+                
+                fig_corr.add_trace(go.Scatter(
+                    x=x_vals,
+                    y=linha_y,
+                    mode='lines',
+                    name='Tendência Média de Entrega',
+                    line=dict(color='rgba(150, 150, 150, 0.5)', width=2, dash='dash'),
+                    hoverinfo='skip'
+                ))
+            except:
+                pass # Se falhar por qualquer motivo matemático, ignora a linha silenciosamente
 
         max_x = df_corr[COL_ALUNOS].max() * 1.15 if not df_corr.empty else 10
         max_y = df_corr['TOTAL_REALIZADO_LINHA'].max() * 1.15 if not df_corr.empty else 10
@@ -338,7 +331,7 @@ if not df_raw.empty:
         st.plotly_chart(fig_corr, use_container_width=True)
         st.markdown("---")
 
-    # --- SEÇÃO DO ANO ATUAL (GRÁFICOS COMPLEMENTARES) ---
+    # --- SEÇÃO DO ANO ATUAL ---
     st.markdown(f'<h3 style="color:#004a87;">📈 Visão Detalhada do Período ({ano_sel})</h3>', unsafe_allow_html=True)
     c_donut, c_bar = st.columns([1, 2])
 
