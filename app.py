@@ -1,5 +1,6 @@
-mport streamlit as st
+import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.graph_objects as go
 import time
 
@@ -74,12 +75,19 @@ def load_all_data():
 
 df_raw = load_all_data()
 
+# --- LÓGICA DINÂMICA DE MESES ---
 if not df_raw.empty:
     COL_CLINICA = "CLINICA"
     COL_ANO = "ANO LETIVO"
     COL_META = "QUANTIDADE DE PROCEDIMENTO POR SEMESTRE"
     COL_ALUNOS = "QUANTIDADE DE ALUNOS"
-    MESES = ["FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", "JULHO"]
+    
+    TODOS_OS_MESES_ANO = [
+        "JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO", 
+        "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO"
+    ]
+    
+    MESES_DETECTADOS = [m for m in TODOS_OS_MESES_ANO if m in df_raw.columns]
 
     if COL_META not in df_raw.columns:
         for c in df_raw.columns:
@@ -87,7 +95,7 @@ if not df_raw.empty:
                 COL_META = c
                 break
 
-    colunas_numericas = [COL_META] + [m for m in MESES if m in df_raw.columns]
+    colunas_numericas = [COL_META] + MESES_DETECTADOS
     if COL_ALUNOS in df_raw.columns:
         colunas_numericas.append(COL_ALUNOS)
 
@@ -95,20 +103,16 @@ if not df_raw.empty:
         if c in df_raw.columns:
             df_raw[c] = pd.to_numeric(df_raw[c], errors='coerce').fillna(0)
 
-    # Criar coluna com o Total Realizado na linha (soma dos meses)
-    df_raw['TOTAL_REALIZADO_LINHA'] = df_raw[[m for m in MESES if m in df_raw.columns]].sum(axis=1)
+    df_raw['TOTAL_REALIZADO_LINHA'] = df_raw[MESES_DETECTADOS].sum(axis=1)
 
     # --- INTERFACE ---
     st.markdown('<h1 class="main-title">🏥 FASICLIN - Gestão de Metas e Produtividade</h1>', unsafe_allow_html=True)
 
-    # Filtros dispostos de forma compacta
     col_u, col_a, col_c = st.columns(3)
     
     with col_u:
-        # Ajuste 1: Definindo ordem estrita para as unidades
         ordem_unidades = ["SINOP", "SORRISO", "CUIABA", "RONDONOPOLIS", "PRIMAVERA"]
         unidades_disponiveis = [u for u in ordem_unidades if u in df_raw['UNIDADE_NOME'].unique().tolist()]
-        # Caso exista alguma unidade fora do padrão mapeado, adiciona no final
         for u in df_raw['UNIDADE_NOME'].unique():
             if u not in unidades_disponiveis:
                 unidades_disponiveis.append(u)
@@ -118,14 +122,12 @@ if not df_raw.empty:
     df_unidade = df_raw[df_raw['UNIDADE_NOME'] == unidade_sel].copy()
 
     with col_a:
-        # Ajuste 2: Adicionando a opção "TODOS" no Ano Letivo Principal
         if COL_ANO in df_unidade.columns:
             anos_disponiveis = ["TODOS"] + sorted(df_unidade[COL_ANO].dropna().unique().tolist(), reverse=True)
             ano_sel = st.selectbox("Ano Letivo Principal (para os KPIs):", anos_disponiveis)
         else:
             ano_sel = "Geral"
 
-    # Base filtrada para o Ano selecionado
     if ano_sel == "TODOS" or ano_sel == "Geral":
         df_filtrado = df_unidade.copy()
     else:
@@ -135,14 +137,12 @@ if not df_raw.empty:
         clinicas_disponiveis = ["TODAS"] + sorted(df_filtrado[COL_CLINICA].dropna().unique().tolist())
         clinica_sel = st.selectbox("Filtrar por Clínica:", clinicas_disponiveis)
 
-    # Base estrita para os números do painel superior
     df_kpi_atual = df_filtrado.copy()
     if clinica_sel != "TODAS":
         df_kpi_atual = df_kpi_atual[df_kpi_atual[COL_CLINICA] == clinica_sel]
 
     # --- CÁLCULOS EXECUTIVOS ---
     total_meta = df_kpi_atual[COL_META].sum()
-    meses_reais = [m for m in MESES if m in df_kpi_atual.columns]
     total_realizado = df_kpi_atual['TOTAL_REALIZADO_LINHA'].sum()
     falta = max(0, total_meta - total_realizado)
     perc_total = (total_realizado / total_meta * 100) if total_meta > 0 else 0
@@ -248,9 +248,10 @@ if not df_raw.empty:
     
     st.markdown("---")
 
-    # --- Ajuste 3: SEÇÃO DE CORRELAÇÃO ATENDIMENTOS VS ALUNOS (CORRIGIDO) ---
+    # --- SEÇÃO DE MATRIZ DE EFICIÊNCIA BLINDADA ---
     if COL_ALUNOS in df_filtrado.columns:
-        st.markdown('<h3 style="color:#004a87;">🔄 Correlação: Atendimentos vs Quantidade de Alunos</h3>', unsafe_allow_html=True)
+        st.markdown('<h3 style="color:#004a87;">🔄 Matriz de Eficiência: Atendimentos vs Quantidade de Alunos</h3>', unsafe_allow_html=True)
+        st.markdown('<span style="color:gray; font-size:14px; display:block; margin-bottom:15px;">Direcionamento: Clínicas <b>acima da linha tracejada</b> estão entregando uma produtividade acima da média da unidade.</span>', unsafe_allow_html=True)
         
         df_corr_base = df_filtrado.copy()
         if clinica_sel != "TODAS":
@@ -261,51 +262,76 @@ if not df_raw.empty:
             'TOTAL_REALIZADO_LINHA': 'sum'
         }).reset_index()
         
-        # Gráfico de Dispersão/Linhas para Correlação Directa
         fig_corr = go.Figure()
+        cores_clinicas = ['#004a87', '#299947', '#ff9800', '#9c27b0', '#e31a1c', '#33a02c']
         
-        # Adiciona as barras de Realizado vs Alunos de forma combinada
-        fig_corr.add_trace(go.Bar(
-            name="Quantidade de Alunos",
-            x=df_corr[COL_CLINICA],
-            y=df_corr[COL_ALUNOS],
-            marker_color='#ff9800',
-            yaxis='y2',
-            text=df_corr[COL_ALUNOS],
-            textposition='auto',
-            opacity=0.75
-        ))
-        
-        fig_corr.add_trace(go.Bar(
-            name="Procedimentos Realizados",
-            x=df_corr[COL_CLINICA],
-            y=df_corr['TOTAL_REALIZADO_LINHA'],
-            marker_color='#004a87',
-            text=df_corr['TOTAL_REALIZADO_LINHA'],
-            textposition='auto'
-        ))
+        for idx, row in df_corr.iterrows():
+            media_ind = row['TOTAL_REALIZADO_LINHA'] / row[COL_ALUNOS] if row[COL_ALUNOS] > 0 else 0
+            
+            fig_corr.add_trace(go.Scatter(
+                x=[row[COL_ALUNOS]],
+                y=[row['TOTAL_REALIZADO_LINHA']],
+                mode='markers+text',
+                name=row[COL_CLINICA],
+                marker=dict(
+                    size=24,
+                    color=cores_clinicas[idx % len(cores_clinicas)],
+                    line=dict(width=2, color='white')
+                ),
+                text=[f"<b>{row[COL_CLINICA]}</b><br>{int(row['TOTAL_REALIZADO_LINHA'])} atend."],
+                textposition="top center",
+                hovertemplate=(
+                    f"<b>{row[COL_CLINICA]}</b><br>" +
+                    f"Alunos Alocados: {int(row[COL_ALUNOS])}<br>" +
+                    f"Total de Atendimentos: {int(row['TOTAL_REALIZADO_LINHA'])}<br>" +
+                    f"Média/Aluno: {media_ind:.1f}<extra></extra>"
+                )
+            ))
+            
+        # BLINDAGEM DA LINHA DE TENDÊNCIA: Só calcula se tiver 2 ou mais clínicas com valores diferentes no eixo X
+        if len(df_corr) > 1 and df_corr[COL_ALUNOS].nunique() > 1:
+            try:
+                df_linha = df_corr.sort_values(by=COL_ALUNOS)
+                x_vals = df_linha[COL_ALUNOS].values
+                y_vals = df_linha['TOTAL_REALIZADO_LINHA'].values
+                
+                slope, intercept = np.polyfit(x_vals, y_vals, 1)
+                linha_y = slope * x_vals + intercept
+                
+                fig_corr.add_trace(go.Scatter(
+                    x=x_vals,
+                    y=linha_y,
+                    mode='lines',
+                    name='Tendência Média de Entrega',
+                    line=dict(color='rgba(150, 150, 150, 0.5)', width=2, dash='dash'),
+                    hoverinfo='skip'
+                ))
+            except:
+                pass # Se falhar por qualquer motivo matemático, ignora a linha silenciosamente
 
-        # Correção da Sintaxe do Layout dos Eixos
+        max_x = df_corr[COL_ALUNOS].max() * 1.15 if not df_corr.empty else 10
+        max_y = df_corr['TOTAL_REALIZADO_LINHA'].max() * 1.15 if not df_corr.empty else 10
+
         fig_corr.update_layout(
-            barmode='group',
-            height=380,
-            margin=dict(t=30, b=20),
-            legend=dict(orientation="h", y=1.15, x=0),
-            yaxis=dict(
-                title=dict(text="Procedimentos Realizados", font=dict(color="#004a87")), 
-                tickfont=dict(color="#004a87")
+            height=450,
+            margin=dict(t=20, b=40, l=40, r=40),
+            showlegend=False,
+            xaxis=dict(
+                title="Quantidade de Alunos da Equipe (Volume)",
+                gridcolor="#f1f3f5",
+                range=[0, max_x]
             ),
-            yaxis2=dict(
-                title=dict(text="Quantidade de Alunos", font=dict(color="#ff9800")), 
-                tickfont=dict(color="#ff9800"), 
-                overlaying='y', 
-                side='right'
-            )
+            yaxis=dict(
+                title="Procedimentos Realizados (Produção)",
+                gridcolor="#f1f3f5",
+                range=[0, max_y]
+            ),
+            plot_bgcolor='white'
         )
         st.plotly_chart(fig_corr, use_container_width=True)
         st.markdown("---")
 
-    # --- SEÇÃO DO ANO ATUAL (GRÁFICOS COMPLEMENTARES) ---
+    # --- SEÇÃO DO ANO ATUAL ---
     st.markdown(f'<h3 style="color:#004a87;">📈 Visão Detalhada do Período ({ano_sel})</h3>', unsafe_allow_html=True)
     c_donut, c_bar = st.columns([1, 2])
 
