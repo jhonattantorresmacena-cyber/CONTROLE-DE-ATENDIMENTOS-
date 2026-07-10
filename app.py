@@ -253,9 +253,10 @@ if not df_raw.empty:
     
     st.markdown("---")
 
-   # --- SEÇÃO DE CORRELAÇÃO ATENDIMENTOS VS ALUNOS (OTIMIZADO) ---
+   # --- SEÇÃO DE CORRELAÇÃO AVANÇADA (DISPERSÃO DE EFICIÊNCIA) ---
     if COL_ALUNOS in df_filtrado.columns:
-        st.markdown('<h3 style="color:#004a87;">🔄 Correlação: Atendimentos vs Quantidade de Alunos</h3>', unsafe_allow_html=True)
+        st.markdown('<h3 style="color:#004a87;">🔄 Matriz de Eficiência: Atendimentos vs Quantidade de Alunos</h3>', unsafe_allow_html=True)
+        st.markdown('<span style="color:gray; font-size:14px; display:block; margin-bottom:15px;">Direcionamento: Clínicas <b>acima da linha tracejada</b> estão com produtividade acima da média da unidade.</span>', unsafe_allow_html=True)
         
         df_corr_base = df_filtrado.copy()
         if clinica_sel != "TODAS":
@@ -266,35 +267,77 @@ if not df_raw.empty:
             'TOTAL_REALIZADO_LINHA': 'sum'
         }).reset_index()
         
-        # Ordenar por volume de atendimentos para deixar o gráfico mais harmônico
-        df_corr = df_corr.sort_values(by='TOTAL_REALIZADO_LINHA', ascending=False)
-        
         fig_corr = go.Figure()
         
-        # 1. Procedimentos Realizados continuam em BARRA (Eixo Y Esquerdo)
-        fig_corr.add_trace(go.Bar(
-            name="Procedimentos Realizados",
-            x=df_corr[COL_CLINICA],
-            y=df_corr['TOTAL_REALIZADO_LINHA'],
-            marker_color='#004a87',
-            text=df_corr['TOTAL_REALIZADO_LINHA'],
-            textposition='outside', # Texto fora da barra para não sumir
-            cliponaxis=False
-        ))
+        # Cores customizadas para dar identidade visual premium a cada clínica
+        cores_clinicas = ['#004a87', '#299947', '#ff9800', '#9c27b0', '#e31a1c', '#33a02c']
         
-        # 2. MELHORIA CRUCIAL: Quantidade de Alunos vira LINHA COM MARCADORES (Eixo Y Direito)
-        fig_corr.add_trace(go.Scatter(
-            name="Quantidade de Alunos",
-            x=df_corr[COL_CLINICA],
-            y=df_corr[COL_ALUNOS],
-            marker=dict(size=10, color='#ff9800', symbol='circle'),
-            line=dict(width=3, color='#ff9800'),
-            yaxis='y2',
-            text=df_corr[COL_ALUNOS],
-            mode='lines+markers+text',
-            textposition='top center' # Texto acima do ponto da linha
-        ))
+        # 1. Adiciona os pontos (bolhas) de cada clínica
+        for idx, row in df_corr.iterrows():
+            # Média de atendimento por aluno individual da linha
+            media_ind = row['TOTAL_REALIZADO_LINHA'] / row[COL_ALUNOS] if row[COL_ALUNOS] > 0 else 0
+            
+            fig_corr.add_trace(go.Scatter(
+                x=[row[COL_ALUNOS]],
+                y=[row['TOTAL_REALIZADO_LINHA']],
+                mode='markers+text',
+                name=row[COL_CLINICA],
+                marker=dict(
+                    size=24,  # Bolha grande e elegante
+                    color=cores_clinicas[idx % len(cores_clinicas)],
+                    line=dict(width=2, color='white')
+                ),
+                text=[f"<b>{row[COL_CLINICA]}</b><br>{int(row['TOTAL_REALIZADO_LINHA'])} atend."],
+                textposition="top center",
+                hovertemplate=(
+                    f"<b>{row[COL_CLINICA]}</b><br>" +
+                    f"Alunos Alocados: {int(row[COL_ALUNOS])}<br>" +
+                    f"Total de Atendimentos: {int(row['TOTAL_REALIZADO_LINHA'])}<br>" +
+                    f"Média/Aluno: {media_ind:.1f}<extra></extra>"
+                )
+            ))
+            
+        # 2. Criar a Linha Guia de Tendência Média (Linear)
+        if len(df_corr) > 1 and df_corr[COL_ALUNOS].sum() > 0:
+            # Ordena para desenhar a linha perfeitamente do início ao fim do gráfico
+            df_linha = df_corr.sort_values(by=COL_ALUNOS)
+            
+            # Cálculo de regressão linear simples para a linha de tendência
+            from scipy import stats
+            slope, intercept, r_value, p_value, std_err = stats.linregress(df_linha[COL_ALUNOS], df_linha['TOTAL_REALIZADO_LINHA'])
+            linha_y = slope * df_linha[COL_ALUNOS] + intercept
+            
+            fig_corr.add_trace(go.Scatter(
+                x=df_linha[COL_ALUNOS],
+                y=linha_y,
+                mode='lines',
+                name='Tendência Média de Entrega',
+                line=dict(color='rgba(150, 150, 150, 0.5)', width=2, dash='dash'),
+                hoverinfo='skip'
+            ))
 
+        # Ajustes de design limpo e espaçamento para os textos não cortarem
+        max_x = df_corr[COL_ALUNOS].max() * 1.15 if not df_corr.empty else 10
+        max_y = df_corr['TOTAL_REALIZADO_LINHA'].max() * 1.15 if not df_corr.empty else 10
+
+        fig_corr.update_layout(
+            height=450,
+            margin=dict(t=20, b=40, l=40, r=40),
+            showlegend=False,  # Remove legenda poluída, os nomes já estão nos pontos
+            xaxis=dict(
+                title="Quantidade de Alunos Equipe (Volume)",
+                gridcolor="#f1f3f5",
+                range=[0, max_x]
+            ),
+            yaxis=dict(
+                title="Procedimentos Realizados (Produção)",
+                gridcolor="#f1f3f5",
+                range=[0, max_y]
+            ),
+            plot_bgcolor='white'
+        )
+        st.plotly_chart(fig_corr, use_container_width=True)
+        st.markdown("---")
         # Ajustes finos de layout para evitar sobreposições
         fig_corr.update_layout(
             height=420,
