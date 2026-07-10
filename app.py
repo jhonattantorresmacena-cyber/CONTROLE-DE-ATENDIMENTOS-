@@ -248,7 +248,7 @@ if not df_raw.empty:
     
     st.markdown("---")
 
-    # --- SEÇÃO DE CORRELAÇÃO: ANÁLISE DE LINHAS DUPLAS (PRODUTIVIDADE) ---
+   # --- SEÇÃO DE CORRELAÇÃO: ANÁLISE DE LINHAS DUPLAS (SEM SOBREPOSIÇÃO) ---
     if COL_ALUNOS in df_filtrado.columns:
         st.markdown('<h3 style="color:#004a87;">🔄 Correlação Temporal: Procedimentos vs Quantidade de Alunos</h3>', unsafe_allow_html=True)
         
@@ -261,12 +261,11 @@ if not df_raw.empty:
             'TOTAL_REALIZADO_LINHA': 'sum'
         }).reset_index()
         
-        # Ordena pelo volume de procedimentos para dar consistência visual ao gráfico
         df_corr = df_corr.sort_values(by='TOTAL_REALIZADO_LINHA', ascending=False)
         
         fig_corr = go.Figure()
         
-        # 1. NOVA LINHA: Quantidade de Procedimentos Realizados (Eixo Y Esquerdo - Azul)
+        # 1. LINHA: Quantidade de Procedimentos Realizados (Eixo Y Esquerdo - Azul)
         fig_corr.add_trace(go.Scatter(
             name="Procedimentos Realizados",
             x=df_corr[COL_CLINICA],
@@ -275,11 +274,13 @@ if not df_raw.empty:
             marker=dict(size=10, color='#004a87', symbol='square'),
             line=dict(width=4, color='#004a87'),
             text=df_corr['TOTAL_REALIZADO_LINHA'],
-            textposition='top center',
+            # "top center" garante que o azul sempre fique para cima
+            textposition='top center', 
+            textfont=dict(color='#004a87', font_weight='bold'),
             hovertemplate="<b>%{x}</b><br>Procedimentos: %{y:,.0f}<extra></extra>"
         ))
         
-        # 2. LINHA MANTIDA: Quantidade de Alunos (Eixo Y Direito - Laranja)
+        # 2. LINHA: Quantidade de Alunos (Eixo Y Direito - Laranja)
         fig_corr.add_trace(go.Scatter(
             name="Quantidade de Alunos",
             x=df_corr[COL_CLINICA],
@@ -289,17 +290,20 @@ if not df_raw.empty:
             line=dict(width=4, color='#ff9800'),
             yaxis='y2',
             text=df_corr[COL_ALUNOS],
-            textposition='bottom center', # Posicionado abaixo do marcador para nunca colidir com os números de cima
+            # AJUSTE CRUCIAL: "bottom center" força o número laranja para baixo, 
+            # evitando o choque que aconteceu em Odontologia
+            textposition='bottom center', 
+            textfont=dict(color='#ff9800', font_weight='bold'),
             hovertemplate="<b>%{x}</b><br>Alunos: %{y:,.0f}<extra></extra>"
         ))
 
-        # Margem de respiro para os rótulos textuais não cortarem nas bordas superior/inferior
-        max_y1 = df_corr['TOTAL_REALIZADO_LINHA'].max() * 1.15 if not df_corr.empty else 100
-        max_y2 = df_corr[COL_ALUNOS].max() * 1.15 if not df_corr.empty else 100
+        # Aumentamos o multiplicador para 1.25 para dar um teto maior (evita cortar o 5094)
+        max_y1 = df_corr['TOTAL_REALIZADO_LINHA'].max() * 1.25 if not df_corr.empty else 100
+        max_y2 = df_corr[COL_ALUNOS].max() * 1.25 if not df_corr.empty else 100
 
         fig_corr.update_layout(
-            height=420,
-            margin=dict(t=60, b=30, l=10, r=10),
+            height=430,
+            margin=dict(t=60, b=40, l=10, r=10),
             legend=dict(orientation="h", y=1.18, x=0),
             hovermode="x unified",
             plot_bgcolor='white',
