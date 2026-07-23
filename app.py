@@ -9,10 +9,10 @@ st.set_page_config(
     page_title="FASICLIN - Intelligence Dashboard", 
     page_icon="🏥", 
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="collapsed" # Sidebar recolhida por padrão
 )
 
-# ESTILIZAÇÃO CSS CUSTOMIZADA (LAYOUT EXECUTIVO)
+# ESTILIZAÇÃO CSS CUSTOMIZADA (LAYOUT EXECUTIVO CLEAN)
 st.markdown("""
     <style>
     /* Fundo geral e fontes */
@@ -26,7 +26,7 @@ st.markdown("""
         padding: 20px 25px;
         border-radius: 12px;
         color: white;
-        margin-bottom: 25px;
+        margin-bottom: 15px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.08);
     }
     .main-header h1 {
@@ -39,6 +39,16 @@ st.markdown("""
         color: #d0e1f9;
         margin: 5px 0 0 0;
         font-size: 14px;
+    }
+
+    /* Container de Filtros no Topo */
+    .filter-container {
+        background-color: #ffffff;
+        border-radius: 10px;
+        padding: 10px 15px;
+        margin-bottom: 20px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
     }
 
     /* Cards de KPI Executivos */
@@ -112,7 +122,7 @@ def load_all_data():
             df_temp['UNIDADE_NOME'] = nome_aba
             lista_dfs.append(df_temp)
         except Exception:
-            st.sidebar.warning(f"Aba {nome_aba} indisponível.")
+            pass
             
     return pd.concat(lista_dfs, ignore_index=True) if lista_dfs else pd.DataFrame()
 
@@ -154,31 +164,36 @@ if not df_raw.empty:
         </div>
     """, unsafe_allow_html=True)
 
-    # --- FILTROS (BARRA LATERAL) ---
-    st.sidebar.header("🔍 Filtros de Visualização")
+    # --- FILTROS HORIZONTAIS NO TOPO (ABAIXO DO CABEÇALHO) ---
+    col_f1, col_f2, col_f3 = st.columns(3)
     
-    ordem_unidades = ["SINOP", "SORRISO", "CUIABA", "RONDONOPOLIS", "PRIMAVERA"]
-    unidades_disponiveis = [u for u in ordem_unidades if u in df_raw['UNIDADE_NOME'].unique().tolist()]
-    for u in df_raw['UNIDADE_NOME'].unique():
-        if u not in unidades_disponiveis:
-            unidades_disponiveis.append(u)
-            
-    unidade_sel = st.sidebar.selectbox("📍 Unidade / Campus:", unidades_disponiveis)
+    with col_f1:
+        ordem_unidades = ["SINOP", "SORRISO", "CUIABA", "RONDONOPOLIS", "PRIMAVERA"]
+        unidades_disponiveis = [u for u in ordem_unidades if u in df_raw['UNIDADE_NOME'].unique().tolist()]
+        for u in df_raw['UNIDADE_NOME'].unique():
+            if u not in unidades_disponiveis:
+                unidades_disponiveis.append(u)
+        unidade_sel = st.selectbox("📍 Unidade / Campus:", unidades_disponiveis)
+    
     df_unidade = df_raw[df_raw['UNIDADE_NOME'] == unidade_sel].copy()
 
-    if COL_ANO in df_unidade.columns:
-        anos_disponiveis = ["TODOS"] + sorted(df_unidade[COL_ANO].dropna().unique().tolist(), reverse=True)
-        ano_sel = st.sidebar.selectbox("📅 Ano Letivo:", anos_disponiveis)
-    else:
-        ano_sel = "Geral"
+    with col_f2:
+        if COL_ANO in df_unidade.columns:
+            anos_disponiveis = ["TODOS"] + sorted(df_unidade[COL_ANO].dropna().unique().tolist(), reverse=True)
+            ano_sel = st.selectbox("📅 Ano Letivo Principal:", anos_disponiveis)
+        else:
+            ano_sel = "Geral"
 
     if ano_sel == "TODOS" or ano_sel == "Geral":
         df_filtrado = df_unidade.copy()
     else:
         df_filtrado = df_unidade[df_unidade[COL_ANO] == ano_sel]
 
-    clinicas_disponiveis = ["TODAS"] + sorted(df_filtrado[COL_CLINICA].dropna().unique().tolist())
-    clinica_sel = st.sidebar.selectbox("🩺 Curso / Clínica:", clinicas_disponiveis)
+    with col_f3:
+        clinicas_disponiveis = ["TODAS"] + sorted(df_filtrado[COL_CLINICA].dropna().unique().tolist())
+        clinica_sel = st.selectbox("🩺 Curso / Clínica:", clinicas_disponiveis)
+
+    st.markdown("<br>", unsafe_allow_html=True)
 
     df_kpi_atual = df_filtrado.copy()
     if clinica_sel != "TODAS":
@@ -237,7 +252,8 @@ if not df_raw.empty:
     aba_geral, aba_detalhada, aba_dados = st.tabs(["📊 Visão Geral Executiva", "📋 Desempenho por Curso", "💾 Tabela de Dados"])
 
     with aba_geral:
-        c_left, c_right = st.columns([7, 5])
+        # LINHA 1 DE GRÁFICOS: META VS REALIZADO & EVOLUÇÃO MENSAL
+        c_left, c_right = st.columns(2)
 
         with c_left:
             st.subheader("📊 Meta vs. Realizado por Clínica")
@@ -268,7 +284,7 @@ if not df_raw.empty:
 
             fig_bar.update_layout(
                 barmode='group',
-                height=380,
+                height=350,
                 plot_bgcolor='white',
                 paper_bgcolor='white',
                 margin=dict(t=20, b=20, l=10, r=10),
@@ -279,7 +295,6 @@ if not df_raw.empty:
         with c_right:
             st.subheader("📅 Curva de Evolução Mensal")
             
-            # Unpivot/Melt dos meses para criar a linha do tempo
             df_meses = df_kpi_atual.melt(
                 id_vars=[COL_CLINICA], 
                 value_vars=meses_existentes,
@@ -288,7 +303,6 @@ if not df_raw.empty:
             )
             df_evolucao = df_meses.groupby('MÊS', as_index=False)['ATENDIMENTOS'].sum()
             
-            # Ordenação cronológica correta
             df_evolucao['MÊS'] = pd.Categorical(df_evolucao['MÊS'], categories=MESES, ordered=True)
             df_evolucao = df_evolucao.sort_values('MÊS')
 
@@ -306,7 +320,7 @@ if not df_raw.empty:
                 textposition="top center"
             )
             fig_line.update_layout(
-                height=380,
+                height=350,
                 plot_bgcolor='white',
                 paper_bgcolor='white',
                 margin=dict(t=20, b=20, l=10, r=10),
@@ -314,6 +328,44 @@ if not df_raw.empty:
                 yaxis_title="Qtd. Procedimentos"
             )
             st.plotly_chart(fig_line, use_container_width=True)
+
+        st.markdown("---")
+
+        # LINHA 2 DE GRÁFICOS: COMPARATIVO ENTRE ANOS LETIVOS
+        st.subheader("🔄 Comparativo do Realizado entre Anos Letivos")
+        
+        df_unidade_comp = df_unidade.copy()
+        if clinica_sel != "TODAS":
+            df_unidade_comp = df_unidade_comp[df_unidade_comp[COL_CLINICA] == clinica_sel]
+
+        df_comp = df_unidade_comp.groupby([COL_CLINICA, COL_ANO], as_index=False)['TOTAL_REALIZADO_LINHA'].sum()
+        anos_historico = sorted(df_comp[COL_ANO].dropna().unique().tolist())
+        
+        fig_comp = go.Figure()
+        paleta_cores = ['#004a87', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899']
+        
+        for idx, ano in enumerate(anos_historico):
+            df_ano_atual = df_comp[df_comp[COL_ANO] == ano]
+            fig_comp.add_trace(go.Bar(
+                name=f"Ano {ano}",
+                x=df_ano_atual[COL_CLINICA],
+                y=df_ano_atual['TOTAL_REALIZADO_LINHA'],
+                marker_color=paleta_cores[idx % len(paleta_cores)],
+                text=df_ano_atual['TOTAL_REALIZADO_LINHA'],
+                textposition='auto'
+            ))
+            
+        fig_comp.update_layout(
+            barmode='group',
+            height=360,
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            margin=dict(t=20, b=20, l=10, r=10),
+            legend=dict(orientation="h", y=1.1, x=0),
+            xaxis_title="Cursos / Clínicas",
+            yaxis_title="Procedimentos Realizados"
+        )
+        st.plotly_chart(fig_comp, use_container_width=True)
 
     with aba_detalhada:
         st.subheader("📋 Detalhamento e Média por Aluno")
@@ -346,15 +398,12 @@ if not df_raw.empty:
     with aba_dados:
         st.subheader("💾 Dados Consolidados")
         
-        # Filtro e exibição da tabela limpa
         colunas_exibir = [COL_CLINICA, COL_ANO, COL_ALUNOS, COL_META, 'TOTAL_REALIZADO_LINHA'] + meses_existentes
         cols_presentes = [c for c in colunas_exibir if c in df_kpi_atual.columns]
         
         df_exibicao = df_kpi_atual[cols_presentes].copy()
-        
         st.dataframe(df_exibicao, use_container_width=True)
         
-        # Download em CSV
         csv = df_exibicao.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Baixar Tabela em CSV",
