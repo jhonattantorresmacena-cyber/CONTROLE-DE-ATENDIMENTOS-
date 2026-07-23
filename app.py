@@ -3,24 +3,22 @@ import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
 import time
+import io
 
 # 1. CONFIGURAÇÃO DA PÁGINA
 st.set_page_config(
     page_title="FASICLIN - Intelligence Dashboard", 
     page_icon="🏥", 
     layout="wide",
-    initial_sidebar_state="collapsed" # Sidebar recolhida por padrão
+    initial_sidebar_state="collapsed"
 )
 
 # ESTILIZAÇÃO CSS CUSTOMIZADA (LAYOUT EXECUTIVO CLEAN)
 st.markdown("""
     <style>
-    /* Fundo geral e fontes */
     .stApp {
         background-color: #f4f6f9;
     }
-    
-    /* Header Principal */
     .main-header {
         background: linear-gradient(135deg, #003366 0%, #004a87 100%);
         padding: 20px 25px;
@@ -40,18 +38,6 @@ st.markdown("""
         margin: 5px 0 0 0;
         font-size: 14px;
     }
-
-    /* Container de Filtros no Topo */
-    .filter-container {
-        background-color: #ffffff;
-        border-radius: 10px;
-        padding: 10px 15px;
-        margin-bottom: 20px;
-        border: 1px solid #e2e8f0;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-    }
-
-    /* Cards de KPI Executivos */
     .kpi-card {
         background-color: #ffffff;
         border-radius: 12px;
@@ -80,8 +66,6 @@ st.markdown("""
         font-size: 12px;
         color: #64748b;
     }
-
-    /* Cards Individuais de Cursos */
     .course-card {
         background-color: #ffffff;
         border-radius: 10px;
@@ -164,7 +148,7 @@ if not df_raw.empty:
         </div>
     """, unsafe_allow_html=True)
 
-    # --- FILTROS HORIZONTAIS NO TOPO (ABAIXO DO CABEÇALHO) ---
+    # --- FILTROS HORIZONTAIS NO TOPO ---
     col_f1, col_f2, col_f3 = st.columns(3)
     
     with col_f1:
@@ -248,11 +232,10 @@ if not df_raw.empty:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- ABAS DE NAVEGAÇÃO DO DASHBOARD ---
+    # --- ABAS DE NAVEGAÇÃO ---
     aba_geral, aba_detalhada, aba_dados = st.tabs(["📊 Visão Geral Executiva", "📋 Desempenho por Curso", "💾 Tabela de Dados"])
 
     with aba_geral:
-        # LINHA 1 DE GRÁFICOS: META VS REALIZADO & EVOLUÇÃO MENSAL
         c_left, c_right = st.columns(2)
 
         with c_left:
@@ -302,7 +285,6 @@ if not df_raw.empty:
                 value_name='ATENDIMENTOS'
             )
             df_evolucao = df_meses.groupby('MÊS', as_index=False)['ATENDIMENTOS'].sum()
-            
             df_evolucao['MÊS'] = pd.Categorical(df_evolucao['MÊS'], categories=MESES, ordered=True)
             df_evolucao = df_evolucao.sort_values('MÊS')
 
@@ -331,41 +313,51 @@ if not df_raw.empty:
 
         st.markdown("---")
 
-        # LINHA 2 DE GRÁFICOS: COMPARATIVO ENTRE ANOS LETIVOS
-        st.subheader("🔄 Comparativo do Realizado entre Anos Letivos")
+        # --- ALTERAÇÃO 1: GRÁFICO COMPARATIVO EM LINHA ---
+        st.subheader("📈 Comparativo da Evolução Mensal entre Anos Letivos")
         
         df_unidade_comp = df_unidade.copy()
         if clinica_sel != "TODAS":
             df_unidade_comp = df_unidade_comp[df_unidade_comp[COL_CLINICA] == clinica_sel]
 
-        df_comp = df_unidade_comp.groupby([COL_CLINICA, COL_ANO], as_index=False)['TOTAL_REALIZADO_LINHA'].sum()
-        anos_historico = sorted(df_comp[COL_ANO].dropna().unique().tolist())
+        # Reformata para mesclar meses e anos
+        df_comp_meses = df_unidade_comp.melt(
+            id_vars=[COL_ANO, COL_CLINICA],
+            value_vars=meses_existentes,
+            var_name='MÊS',
+            value_name='ATENDIMENTOS'
+        )
         
-        fig_comp = go.Figure()
-        paleta_cores = ['#004a87', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899']
+        df_comp_evol = df_comp_meses.groupby([COL_ANO, 'MÊS'], as_index=False)['ATENDIMENTOS'].sum()
+        df_comp_evol['MÊS'] = pd.Categorical(df_comp_evol['MÊS'], categories=MESES, ordered=True)
+        df_comp_evol = df_comp_evol.sort_values('MÊS')
+
+        fig_comp_line = px.line(
+            df_comp_evol,
+            x='MÊS',
+            y='ATENDIMENTOS',
+            color=COL_ANO,
+            markers=True,
+            text='ATENDIMENTOS',
+            color_discrete_sequence=['#004a87', '#10b981', '#f59e0b', '#8b5cf6']
+        )
         
-        for idx, ano in enumerate(anos_historico):
-            df_ano_atual = df_comp[df_comp[COL_ANO] == ano]
-            fig_comp.add_trace(go.Bar(
-                name=f"Ano {ano}",
-                x=df_ano_atual[COL_CLINICA],
-                y=df_ano_atual['TOTAL_REALIZADO_LINHA'],
-                marker_color=paleta_cores[idx % len(paleta_cores)],
-                text=df_ano_atual['TOTAL_REALIZADO_LINHA'],
-                textposition='auto'
-            ))
-            
-        fig_comp.update_layout(
-            barmode='group',
-            height=360,
+        fig_comp_line.update_traces(
+            line_width=3, 
+            marker_size=8,
+            textposition="top center"
+        )
+        
+        fig_comp_line.update_layout(
+            height=380,
             plot_bgcolor='white',
             paper_bgcolor='white',
             margin=dict(t=20, b=20, l=10, r=10),
-            legend=dict(orientation="h", y=1.1, x=0),
-            xaxis_title="Cursos / Clínicas",
+            legend=dict(orientation="h", y=1.1, x=0, title="Ano Letivo:"),
+            xaxis_title="",
             yaxis_title="Procedimentos Realizados"
         )
-        st.plotly_chart(fig_comp, use_container_width=True)
+        st.plotly_chart(fig_comp_line, use_container_width=True)
 
     with aba_detalhada:
         st.subheader("📋 Detalhamento e Média por Aluno")
@@ -395,6 +387,7 @@ if not df_raw.empty:
                     st.progress(min(p_ind/100, 1.0))
                     st.caption(f"Aproveitamento: **{p_ind:.1f}%**")
 
+    # --- ALTERAÇÃO 2: DOWNLOAD DA TABELA EM EXCEL (.XLSX) ---
     with aba_dados:
         st.subheader("💾 Dados Consolidados")
         
@@ -404,12 +397,17 @@ if not df_raw.empty:
         df_exibicao = df_kpi_atual[cols_presentes].copy()
         st.dataframe(df_exibicao, use_container_width=True)
         
-        csv = df_exibicao.to_csv(index=False).encode('utf-8')
+        # Gerador do arquivo Excel em memória
+        buffer_excel = io.BytesIO()
+        with pd.ExcelWriter(buffer_excel, engine='openpyxl') as writer:
+            df_exibicao.to_excel(writer, index=False, sheet_name='Consolidado_FASICLIN')
+        buffer_excel.seek(0)
+
         st.download_button(
-            label="📥 Baixar Tabela em CSV",
-            data=csv,
-            file_name=f"FASICLIN_{unidade_sel}_{ano_sel}.csv",
-            mime="text/csv"
+            label="📊 Baixar Tabela Completa em Excel (.xlsx)",
+            data=buffer_excel,
+            file_name=f"FASICLIN_{unidade_sel}_{ano_sel}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 else:
     st.warning("Nenhum dado pôde ser carregado. Verifique o compartilhamento da planilha no Google Sheets.")
