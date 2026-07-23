@@ -66,6 +66,20 @@ st.markdown("""
         font-size: 12px;
         color: #64748b;
     }
+    .badge-pos {
+        color: #10b981;
+        font-weight: 700;
+        background-color: #ecfdf5;
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
+    .badge-neg {
+        color: #ef4444;
+        font-weight: 700;
+        background-color: #fef2f2;
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
     .course-card {
         background-color: #ffffff;
         border-radius: 10px;
@@ -183,12 +197,35 @@ if not df_raw.empty:
     if clinica_sel != "TODAS":
         df_kpi_atual = df_kpi_atual[df_kpi_atual[COL_CLINICA] == clinica_sel]
 
-    # --- CÁLCULOS EXECUTIVOS ---
+    # --- CÁLCULOS EXECUTIVOS E COMPARATIVO DE ANO ANTERIOR ---
     total_meta = df_kpi_atual[COL_META].sum()
     total_realizado = df_kpi_atual['TOTAL_REALIZADO_LINHA'].sum()
-    falta = max(0, total_meta - total_realizado)
     perc_total = (total_realizado / total_meta * 100) if total_meta > 0 else 0
     total_alunos = df_kpi_atual[COL_ALUNOS].sum() if COL_ALUNOS in df_kpi_atual.columns else 0
+
+    # Lógica de cálculo do Ano Anterior (YoY)
+    subtext_realizado = "Procedimentos Concluídos"
+    if ano_sel != "TODOS" and ano_sel != "Geral" and "/" in str(ano_sel):
+        try:
+            ano_num, sem_num = ano_sel.split("/")
+            ano_ant = f"{int(ano_num) - 1}/{sem_num}"
+            
+            df_ant = df_unidade[df_unidade[COL_ANO] == ano_ant]
+            if clinica_sel != "TODAS":
+                df_ant = df_ant[df_ant[COL_CLINICA] == clinica_sel]
+                
+            total_realizado_ant = df_ant['TOTAL_REALIZADO_LINHA'].sum()
+            
+            if total_realizado_ant > 0:
+                var_perc = ((total_realizado - total_realizado_ant) / total_realizado_ant) * 100
+                if var_perc >= 0:
+                    subtext_realizado = f'<span class="badge-pos">▲ +{var_perc:.1f}%</span> vs {ano_ant}'
+                else:
+                    subtext_realizado = f'<span class="badge-neg">▼ {var_perc:.1f}%</span> vs {ano_ant}'
+            else:
+                subtext_realizado = f"Sem dados em {ano_ant}"
+        except Exception:
+            subtext_realizado = "Procedimentos Concluídos"
 
     # --- CARDS DE KPI SUPERIORES ---
     k1, k2, k3, k4 = st.columns(4)
@@ -207,7 +244,7 @@ if not df_raw.empty:
             <div class="kpi-card" style="border-left: 4px solid #10b981;">
                 <div class="kpi-title">✅ Realizado no Período</div>
                 <div class="kpi-value" style="color:#10b981;">{total_realizado:,.0f}</div>
-                <div class="kpi-sub">Procedimentos Concluídos</div>
+                <div class="kpi-sub">{subtext_realizado}</div>
             </div>
         """, unsafe_allow_html=True)
 
@@ -313,14 +350,13 @@ if not df_raw.empty:
 
         st.markdown("---")
 
-        # --- ALTERAÇÃO 1: GRÁFICO COMPARATIVO EM LINHA ---
+        # --- GRÁFICO COMPARATIVO EM LINHA ---
         st.subheader("📈 Comparativo da Evolução Mensal entre Anos Letivos")
         
         df_unidade_comp = df_unidade.copy()
         if clinica_sel != "TODAS":
             df_unidade_comp = df_unidade_comp[df_unidade_comp[COL_CLINICA] == clinica_sel]
 
-        # Reformata para mesclar meses e anos
         df_comp_meses = df_unidade_comp.melt(
             id_vars=[COL_ANO, COL_CLINICA],
             value_vars=meses_existentes,
@@ -387,7 +423,7 @@ if not df_raw.empty:
                     st.progress(min(p_ind/100, 1.0))
                     st.caption(f"Aproveitamento: **{p_ind:.1f}%**")
 
-    # --- ALTERAÇÃO 2: DOWNLOAD DA TABELA EM EXCEL (.XLSX) ---
+    # --- TABELA DE DADOS & DOWNLOAD SEM ERRO DE PACOTES ---
     with aba_dados:
         st.subheader("💾 Dados Consolidados")
         
@@ -397,17 +433,13 @@ if not df_raw.empty:
         df_exibicao = df_kpi_atual[cols_presentes].copy()
         st.dataframe(df_exibicao, use_container_width=True)
         
-        # Gerador do arquivo Excel em memória
-        buffer_excel = io.BytesIO()
-        with pd.ExcelWriter(buffer_excel, engine='openpyxl') as writer:
-            df_exibicao.to_excel(writer, index=False, sheet_name='Consolidado_FASICLIN')
-        buffer_excel.seek(0)
+        csv_excel = df_exibicao.to_csv(index=False, sep=';', encoding='utf-8-sig').encode('utf-8-sig')
 
         st.download_button(
-            label="📊 Baixar Tabela Completa em Excel (.xlsx)",
-            data=buffer_excel,
-            file_name=f"FASICLIN_{unidade_sel}_{ano_sel}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            label="📊 Baixar Tabela para Excel (.csv/excel)",
+            data=csv_excel,
+            file_name=f"FASICLIN_{unidade_sel}_{ano_sel}.csv",
+            mime="text/csv"
         )
 else:
     st.warning("Nenhum dado pôde ser carregado. Verifique o compartilhamento da planilha no Google Sheets.")
