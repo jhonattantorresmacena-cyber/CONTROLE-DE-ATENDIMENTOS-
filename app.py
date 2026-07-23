@@ -91,12 +91,15 @@ if not df_raw.empty:
     if COL_ALUNOS in df_raw.columns:
         colunas_numericas.append(COL_ALUNOS)
 
+    # CORREÇÃO: Tratamento rigoroso de numéricos com formatação BR (ex: "1.000,00")
     for c in colunas_numericas:
         if c in df_raw.columns:
+            df_raw[c] = df_raw[c].astype(str).str.replace('.', '', regex=False).str.replace(',', '.', regex=False)
             df_raw[c] = pd.to_numeric(df_raw[c], errors='coerce').fillna(0)
 
     # Criar coluna com o Total Realizado na linha (soma dos meses)
-    df_raw['TOTAL_REALIZADO_LINHA'] = df_raw[[m for m in MESES if m in df_raw.columns]].sum(axis=1)
+    meses_existentes = [m for m in MESES if m in df_raw.columns]
+    df_raw['TOTAL_REALIZADO_LINHA'] = df_raw[meses_existentes].sum(axis=1) if meses_existentes else 0
 
     # --- INTERFACE ---
     st.markdown('<h1 class="main-title">🏥 FASICLIN - Gestão de Metas e Produtividade</h1>', unsafe_allow_html=True)
@@ -105,10 +108,8 @@ if not df_raw.empty:
     col_u, col_a, col_c = st.columns(3)
     
     with col_u:
-        # Ajuste 1: Definindo ordem estrita para as unidades
         ordem_unidades = ["SINOP", "SORRISO", "CUIABA", "RONDONOPOLIS", "PRIMAVERA"]
         unidades_disponiveis = [u for u in ordem_unidades if u in df_raw['UNIDADE_NOME'].unique().tolist()]
-        # Caso exista alguma unidade fora do padrão mapeado, adiciona no final
         for u in df_raw['UNIDADE_NOME'].unique():
             if u not in unidades_disponiveis:
                 unidades_disponiveis.append(u)
@@ -118,14 +119,12 @@ if not df_raw.empty:
     df_unidade = df_raw[df_raw['UNIDADE_NOME'] == unidade_sel].copy()
 
     with col_a:
-        # Ajuste 2: Adicionando a opção "TODOS" no Ano Letivo Principal
         if COL_ANO in df_unidade.columns:
             anos_disponiveis = ["TODOS"] + sorted(df_unidade[COL_ANO].dropna().unique().tolist(), reverse=True)
             ano_sel = st.selectbox("Ano Letivo Principal (para os KPIs):", anos_disponiveis)
         else:
             ano_sel = "Geral"
 
-    # Base filtrada para o Ano selecionado
     if ano_sel == "TODOS" or ano_sel == "Geral":
         df_filtrado = df_unidade.copy()
     else:
@@ -135,14 +134,12 @@ if not df_raw.empty:
         clinicas_disponiveis = ["TODAS"] + sorted(df_filtrado[COL_CLINICA].dropna().unique().tolist())
         clinica_sel = st.selectbox("Filtrar por Clínica:", clinicas_disponiveis)
 
-    # Base estrita para os números do painel superior
     df_kpi_atual = df_filtrado.copy()
     if clinica_sel != "TODAS":
         df_kpi_atual = df_kpi_atual[df_kpi_atual[COL_CLINICA] == clinica_sel]
 
     # --- CÁLCULOS EXECUTIVOS ---
     total_meta = df_kpi_atual[COL_META].sum()
-    meses_reais = [m for m in MESES if m in df_kpi_atual.columns]
     total_realizado = df_kpi_atual['TOTAL_REALIZADO_LINHA'].sum()
     falta = max(0, total_meta - total_realizado)
     perc_total = (total_realizado / total_meta * 100) if total_meta > 0 else 0
@@ -151,7 +148,7 @@ if not df_raw.empty:
     # --- LÓGICA DO INDICATIVO DE CRESCIMENTO ---
     texto_crescimento = '<span style="color:gray; font-size:12px;">Primeiro período registrado</span>'
     
-    if COL_ANO in df_unidade.columns and ano_sel != "TODOS" and ano_sel != "Geral":
+    if COL_ANO in df_unidade.columns and ano_sel not in ["TODOS", "Geral"]:
         anos_validos = sorted(df_unidade[COL_ANO].dropna().unique().tolist(), reverse=True)
         try:
             idx_ano_atual = anos_validos.index(ano_sel)
@@ -172,7 +169,7 @@ if not df_raw.empty:
                         texto_crescimento = f'<span class="growth-indicator" style="color:#d32f2f;">▼ {variacao:.1f}%</span> <span style="color:gray; font-size:12px;">vs {ano_anterior}</span>'
                 else:
                     texto_crescimento = '<span style="color:gray; font-size:12px;">Sem dados em período anterior</span>'
-        except:
+        except Exception:
             pass
     elif ano_sel == "TODOS":
         texto_crescimento = '<span style="color:gray; font-size:12px;">Visualizando histórico consolidado</span>'
@@ -221,111 +218,33 @@ if not df_raw.empty:
     # --- BLOCO: COMPARATIVO ENTRE ANOS LETIVOS ---
     st.markdown('<h3 style="color:#004a87;">📊 Comparativo entre Anos Letivos</h3>', unsafe_allow_html=True)
     
-    df_comp = df_unidade.groupby([COL_CLINICA, COL_ANO])['TOTAL_REALIZADO_LINHA'].sum().reset_index()
-    anos_historico = sorted(df_comp[COL_ANO].unique().tolist())
-    
-    fig_comp = go.Figure()
-    paleta_cores = ['#004a87', '#299947', '#ff9800', '#9c27b0']
-    
-    for idx, ano in enumerate(anos_historico):
-        df_ano_atual = df_comp[df_comp[COL_ANO] == ano]
-        fig_comp.add_trace(go.Bar(
-            name=f"Realizado {ano}",
-            x=df_ano_atual[COL_CLINICA],
-            y=df_ano_atual['TOTAL_REALIZADO_LINHA'],
-            marker_color=paleta_cores[idx % len(paleta_cores)],
-            text=df_ano_atual['TOTAL_REALIZADO_LINHA'],
-            textposition='auto'
-        ))
+    if COL_ANO in df_unidade.columns and COL_CLINICA in df_unidade.columns:
+        df_comp = df_unidade.groupby([COL_CLINICA, COL_ANO])['TOTAL_REALIZADO_LINHA'].sum().reset_index()
+        anos_historico = sorted(df_comp[COL_ANO].dropna().unique().tolist())
         
-    fig_comp.update_layout(
-        barmode='group',
-        height=320,
-        margin=dict(t=20, b=20),
-        legend=dict(orientation="h", y=1.1, x=0)
-    )
-    st.plotly_chart(fig_comp, use_container_width=True)
+        fig_comp = go.Figure()
+        paleta_cores = ['#004a87', '#299947', '#ff9800', '#9c27b0']
+        
+        for idx, ano in enumerate(anos_historico):
+            df_ano_atual = df_comp[df_comp[COL_ANO] == ano]
+            fig_comp.add_trace(go.Bar(
+                name=f"Realizado {ano}",
+                x=df_ano_atual[COL_CLINICA],
+                y=df_ano_atual['TOTAL_REALIZADO_LINHA'],
+                marker_color=paleta_cores[idx % len(paleta_cores)],
+                text=df_ano_atual['TOTAL_REALIZADO_LINHA'],
+                textposition='auto'
+            ))
+            
+        fig_comp.update_layout(
+            barmode='group',
+            height=320,
+            margin=dict(t=20, b=20),
+            legend=dict(orientation="h", y=1.1, x=0)
+        )
+        st.plotly_chart(fig_comp, use_container_width=True)
     
     st.markdown("---")
-
-    # --- SEÇÃO DE CORRELAÇÃO DEFINITIVA (EVOLUÇÃO TEMPORAL) ---
-    # Nota: Substitua COL_TEMPO pela sua coluna de data, mês ou período (ex: 'MES_ANO' ou 'DATA')
-    COL_TEMPO = 'MES_ANO' 
-
-    if COL_ALUNOS in df_filtrado.columns and COL_TEMPO in df_filtrado.columns:
-        st.markdown('<h3 style="color:#004a87;">🔄 Correlação Temporal: Procedimentos vs Quantidade de Alunos</h3>', unsafe_allow_html=True)
-        
-        df_corr_base = df_filtrado.copy()
-        if clinica_sel != "TODAS":
-            df_corr_base = df_corr_base[df_corr_base[COL_CLINICA] == clinica_sel]
-            
-        # Agrupamos por TEMPO para ver a evolução temporal (mesmo se for de apenas uma clínica!)
-        df_corr = df_corr_base.groupby(COL_TEMPO).agg({
-            COL_ALUNOS: 'sum',
-            'TOTAL_REALIZADO_LINHA': 'sum'
-        }).reset_index()
-        
-        # Garanta que o tempo esteja ordenado cronologicamente
-        df_corr = df_corr.sort_values(by=COL_TEMPO)
-        
-        fig_corr = go.Figure()
-        
-        # 1. LINHA: Quantidade de Procedimentos Realizados (Eixo Y Esquerdo - Azul)
-        fig_corr.add_trace(go.Scatter(
-            name="Procedimentos Realizados",
-            x=df_corr[COL_TEMPO],
-            y=df_corr['TOTAL_REALIZADO_LINHA'],
-            mode='lines+markers+text',
-            marker=dict(size=10, color='#004a87', symbol='square'),
-            line=dict(width=4, color='#004a87'),
-            text=df_corr['TOTAL_REALIZADO_LINHA'].apply(lambda x: f"<b>{x:,.0f}</b>"),
-            textposition='top center', 
-            textfont=dict(color='#004a87'), 
-            hovertemplate="<b>%{x}</b><br>Procedimentos: %{y:,.0f}<extra></extra>"
-        ))
-        
-        # 2. LINHA: Quantidade de Alunos (Eixo Y Direito - Laranja)
-        fig_corr.add_trace(go.Scatter(
-            name="Quantidade de Alunos",
-            x=df_corr[COL_TEMPO],
-            y=df_corr[COL_ALUNOS],
-            mode='lines+markers+text',
-            marker=dict(size=10, color='#ff9800', symbol='circle'),
-            line=dict(width=4, color='#ff9800'),
-            yaxis='y2',
-            text=df_corr[COL_ALUNOS].apply(lambda x: f"<b>{x:,.0f}</b>"),
-            textposition='bottom center', 
-            textfont=dict(color='#ff9800'), 
-            hovertemplate="<b>%{x}</b><br>Alunos: %{y:,.0f}<extra></extra>"
-        ))
-
-        # Margem extra de 25% para evitar cortes de texto
-        max_y1 = df_corr['TOTAL_REALIZADO_LINHA'].max() * 1.25 if not df_corr.empty else 100
-        max_y2 = df_corr[COL_ALUNOS].max() * 1.25 if not df_corr.empty else 100
-
-        fig_corr.update_layout(
-            height=430,
-            margin=dict(t=60, b=40, l=10, r=10),
-            legend=dict(orientation="h", y=1.18, x=0),
-            hovermode="x unified",
-            plot_bgcolor='white',
-            yaxis=dict(
-                title=dict(text="Procedimentos Realizados", font=dict(color="#004a87", size=13)), 
-                tickfont=dict(color="#004a87"),
-                gridcolor="#f1f3f5",
-                range=[0, max_y1]
-            ),
-            yaxis2=dict(
-                title=dict(text="Quantidade de Alunos", font=dict(color="#ff9800", size=13)), 
-                tickfont=dict(color="#ff9800"), 
-                overlaying='y', 
-                side='right',
-                showgrid=False,
-                range=[0, max_y2]
-            )
-        )
-        st.plotly_chart(fig_corr, use_container_width=True)
-        st.markdown("---")
 
     # --- SEÇÃO DO ANO ATUAL (GRÁFICOS COMPLEMENTARES) ---
     st.markdown(f'<h3 style="color:#004a87;">📈 Visão Detalhada do Período ({ano_sel})</h3>', unsafe_allow_html=True)
@@ -354,11 +273,11 @@ if not df_raw.empty:
         if clinica_sel != "TODAS":
             df_resumo_base = df_resumo_base[df_resumo_base[COL_CLINICA] == clinica_sel]
             
-        resumo = df_resumo_base.groupby(COL_CLINICA).agg({
-            COL_META: 'sum',
-            'TOTAL_REALIZADO_LINHA': 'sum',
-            **({COL_ALUNOS: 'sum'} if COL_ALUNOS in df_resumo_base.columns else {})
-        }).reset_index().rename(columns={'TOTAL_REALIZADO_LINHA': 'REALIZADO'})
+        agg_dict = {COL_META: 'sum', 'TOTAL_REALIZADO_LINHA': 'sum'}
+        if COL_ALUNOS in df_resumo_base.columns:
+            agg_dict[COL_ALUNOS] = 'sum'
+
+        resumo = df_resumo_base.groupby(COL_CLINICA).agg(agg_dict).reset_index().rename(columns={'TOTAL_REALIZADO_LINHA': 'REALIZADO'})
         
         fig_bar = go.Figure()
         fig_bar.add_trace(go.Bar(name='Realizado Atual', x=resumo[COL_CLINICA], y=resumo['REALIZADO'], marker_color='#299947', text=resumo['REALIZADO'], textposition='auto'))
@@ -366,31 +285,34 @@ if not df_raw.empty:
         fig_bar.update_layout(barmode='group', height=350, margin=dict(t=20, b=20), legend=dict(orientation="h", y=1.1, x=0))
         st.plotly_chart(fig_bar, use_container_width=True)
 
-    # --- DETALHAMENTO EM CARDS ---
+    # --- DETALHAMENTO EM CARDS CORRIGIDO ---
     st.markdown('<h3 style="color:#004a87; margin-top:30px;">📋 Detalhes Individuais por Curso</h3>', unsafe_allow_html=True)
-    cols = st.columns(3)
     
-    for i, (_, row) in enumerate(resumo.iterrows()):
-        p_ind = (row['REALIZADO'] / row[COL_META] * 100) if row[COL_META] > 0 else 0
-        aluno_txt = f"Alunos: <b>{int(row[COL_ALUNOS])}</b>" if COL_ALUNOS in row else ""
-        media_atend_aluno = (row['REALIZADO'] / row[COL_ALUNOS]) if COL_ALUNOS in row and row[COL_ALUNOS] > 0 else 0
-        
-        with cols[i % 3]:
-            st.markdown(f"""
-            <div class="metric-card">
-                <span style="font-size: 16px; font-weight: bold; color: #333;">{row[COL_CLINICA]}</span>
-                <hr style="margin: 8px 0; border: 0; border-top: 1px solid #eee;">
-                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-                    <span style="color: gray;">Realizado: <b>{int(row['REALIZADO'])}</b></span>
-                    <span style="color: gray;">Meta: <b>{int(row[COL_META])}</b></span>
+    # CORREÇÃO: Divisão limpa em grids dinâmicas de 3 colunas por linha
+    for i in range(0, len(resumo), 3):
+        cols = st.columns(3)
+        sub_df = resumo.iloc[i:i+3]
+        for idx, (_, row) in enumerate(sub_df.iterrows()):
+            p_ind = (row['REALIZADO'] / row[COL_META] * 100) if row[COL_META] > 0 else 0
+            aluno_txt = f"Alunos: <b>{int(row[COL_ALUNOS])}</b>" if COL_ALUNOS in row else ""
+            media_atend_aluno = (row['REALIZADO'] / row[COL_ALUNOS]) if COL_ALUNOS in row and row[COL_ALUNOS] > 0 else 0
+            
+            with cols[idx]:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <span style="font-size: 16px; font-weight: bold; color: #333;">{row[COL_CLINICA]}</span>
+                    <hr style="margin: 8px 0; border: 0; border-top: 1px solid #eee;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                        <span style="color: gray;">Realizado: <b>{int(row['REALIZADO'])}</b></span>
+                        <span style="color: gray;">Meta: <b>{int(row[COL_META])}</b></span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                        <span style="color: #ff9800;">{aluno_txt}</span>
+                        <span style="color: #004a87;">Média/Aluno: <b>{media_atend_aluno:.1f}</b></span>
+                    </div>
                 </div>
-                <div style="display: flex; justify-content: space-between; font-size: 13px;">
-                    <span style="color: #ff9800;">{aluno_txt}</span>
-                    <span style="color: #004a87;">Média/Aluno: <b>{media_atend_aluno:.1f}</b></span>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-            st.progress(min(p_ind/100, 1.0))
-            st.caption(f"Aproveitamento: {p_ind:.1f}% da meta")
+                """, unsafe_allow_html=True)
+                st.progress(min(p_ind/100, 1.0))
+                st.caption(f"Aproveitamento: {p_ind:.1f}% da meta")
 else:
     st.warning("Nenhum dado pôde ser carregado. Certifique-se de que a planilha está aberta para 'Qualquer pessoa com o link'.")
