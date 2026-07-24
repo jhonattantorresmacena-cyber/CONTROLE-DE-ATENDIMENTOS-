@@ -388,7 +388,7 @@ if not df_raw.empty:
             height=380,
             plot_bgcolor='white',
             paper_bgcolor='white',
-            margin=dict(t=50, b=20, l=10, r=10),
+            margin=dict(t=50, b=40, l=40, r=40),
             legend=dict(orientation="h", y=1.1, x=0, title="Ano Letivo:"),
             xaxis_title="",
             yaxis_title="Procedimentos Realizados"
